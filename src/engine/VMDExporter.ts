@@ -1,15 +1,17 @@
 import Encoding from "encoding-japanese";
+import * as THREE from "three";
 
 export class VMDExporter {
-
   static export(motion: any): Uint8Array {
+    const keyframes = motion.keyframes;
+
+    if (!keyframes || !Array.isArray(keyframes)) {
+      throw new Error("VMD export failed: motion.keyframes is missing");
+    }
 
     // Large temporary buffer
-    const buffer =
-      new ArrayBuffer(1024 * 1024 * 10);
-
-    const view =
-      new DataView(buffer);
+    const buffer = new ArrayBuffer(1024 * 1024 * 10);
+    const view = new DataView(buffer);
 
     let offset = 0;
 
@@ -17,116 +19,92 @@ export class VMDExporter {
     // HEADER
     // =====================================
 
-    const header =
-      "Vocaloid Motion Data 0002";
+    const header = "Vocaloid Motion Data 0002";
 
     for (let i = 0; i < header.length; i++) {
-
-      view.setUint8(
-        offset++,
-        header.charCodeAt(i)
-      );
+      view.setUint8(offset++, header.charCodeAt(i));
     }
 
-    // pad header to 30 bytes
     while (offset < 30) {
-
       view.setUint8(offset++, 0);
     }
 
     // =====================================
-    // MODEL NAME (20 bytes)
+    // MODEL NAME
     // =====================================
 
-    const modelName =
-      Encoding.convert(
-        "AI Motion",
-        {
-          to: "SJIS",
-          type: "array"
-        }
-      );
+    const modelName = Encoding.convert("AI Motion", {
+      to: "SJIS",
+      type: "array",
+    }) as number[];
 
     for (let i = 0; i < 20; i++) {
-
-      view.setUint8(
-        offset++,
-        modelName[i] || 0
-      );
+      view.setUint8(offset++, modelName[i] || 0);
     }
 
     // =====================================
-    // COUNT TOTAL BONE FRAMES
+    // COUNT TOTAL BONE KEYFRAMES
     // =====================================
 
     let boneFrameCount = 0;
 
-    for (const frame of motion.frames) {
+    for (const keyframe of keyframes) {
+      if (!keyframe.bones) continue;
 
-      boneFrameCount +=
-        Object.keys(frame.bones).length;
+      boneFrameCount += Object.keys(keyframe.bones).length;
     }
 
-    view.setUint32(
-      offset,
-      boneFrameCount,
-      true
-    );
-
+    view.setUint32(offset, boneFrameCount, true);
     offset += 4;
 
     // =====================================
     // WRITE BONE KEYFRAMES
     // =====================================
 
-    for (const frame of motion.frames) {
+    for (const keyframe of keyframes) {
+      if (!keyframe.bones) continue;
 
-      const frameIndex =
-        Math.round(frame.time * 30);
+      // VMD uses 30 FPS frame numbers
+      const frameIndex = Math.round(keyframe.time * 30);
 
-      for (
-        const [boneName, rot]
-        of Object.entries(frame.bones)
-      ) {
+      for (const [boneName, rot] of Object.entries(keyframe.bones)) {
+        const q = rot as number[];
 
-        const q =
-          rot as number[];
+        if (!Array.isArray(q) || q.length < 4) {
+          continue;
+        }
+
+        // Normalize quaternion before export
+        const quat = new THREE.Quaternion(
+          q[0] ?? 0,
+          q[1] ?? 0,
+          q[2] ?? 0,
+          q[3] ?? 1
+        ).normalize();
 
         // ==========================
-        // BONE NAME (15 bytes SJIS)
+        // BONE NAME: 15 bytes Shift-JIS
         // ==========================
 
-        const encodedName =
-          Encoding.convert(
-            boneName,
-            {
-              to: "SJIS",
-              type: "array"
-            }
-          );
+        const encodedName = Encoding.convert(boneName, {
+          to: "SJIS",
+          type: "array",
+        }) as number[];
 
         for (let i = 0; i < 15; i++) {
-
-          view.setUint8(
-            offset++,
-            encodedName[i] || 0
-          );
+          view.setUint8(offset++, encodedName[i] || 0);
         }
 
         // ==========================
         // FRAME NUMBER
         // ==========================
 
-        view.setUint32(
-          offset,
-          frameIndex,
-          true
-        );
-
+        view.setUint32(offset, frameIndex, true);
         offset += 4;
 
         // ==========================
-        // POSITION (unused)
+        // POSITION
+        // For bone rotation-only motion, keep 0.
         // ==========================
 
         view.setFloat32(offset, 0, true);
@@ -140,51 +118,29 @@ export class VMDExporter {
 
         // ==========================
         // QUATERNION ROTATION
+        // VMD order: x, y, z, w
         // ==========================
 
-        view.setFloat32(
-          offset,
-          q[0] || 0,
-          true
-        );
-
+        view.setFloat32(offset, quat.x, true);
         offset += 4;
 
-        view.setFloat32(
-          offset,
-          q[1] || 0,
-          true
-        );
-
+        view.setFloat32(offset, quat.y, true);
         offset += 4;
 
-        view.setFloat32(
-          offset,
-          q[2] || 0,
-          true
-        );
-
+        view.setFloat32(offset, quat.z, true);
         offset += 4;
 
-        view.setFloat32(
-          offset,
-          q[3] ?? 1,
-          true
-        );
-
+        view.setFloat32(offset, quat.w, true);
         offset += 4;
 
         // ==========================
         // INTERPOLATION
-        // 64 bytes
+        // 64 bytes.
+        // Simple smooth-ish default.
         // ==========================
 
         for (let i = 0; i < 64; i++) {
-
-          view.setUint8(
-            offset++,
-            20
-          );
+          view.setUint8(offset++, 20);
         }
       }
     }
@@ -210,10 +166,8 @@ export class VMDExporter {
     view.setUint32(offset, 0, true);
     offset += 4;
 
-    // Ensure the buffer is explicitly cast to ArrayBuffer
     const arrayBuffer = buffer.slice(0, offset) as ArrayBuffer;
 
-    // Return a Uint8Array created from the ArrayBuffer
     return new Uint8Array(arrayBuffer);
   }
 }

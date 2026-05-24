@@ -1,162 +1,129 @@
 import * as THREE from "three";
-import { CCDIKSolver } from "three/examples/jsm/animation/CCDIKSolver.js";
 
 export class MotionPlayer {
   mesh: any;
   motion: any;
 
-  startTime = 0;
+  restPose: Record<string, THREE.Quaternion> = {};
 
-  failedAttempts = 0;
-  maxFailedAttempts = 10;
+  startTime = 0;
 
   constructor(mesh: any) {
     this.mesh = mesh;
+
+    // Save original A-pose / rest pose
+    this.mesh.skeleton.bones.forEach((bone: any) => {
+      this.restPose[bone.name] = bone.quaternion.clone();
+    });
+  }
+
+  resetToRestPose() {
+    this.mesh.skeleton.bones.forEach((bone: any) => {
+      const restQuat = this.restPose[bone.name];
+
+      if (restQuat) {
+        bone.quaternion.copy(restQuat);
+      }
+    });
   }
 
   loadMotion(motion: any) {
+    // Important: clear previous motion pose first
+    this.resetToRestPose();
+
     this.motion = motion;
-
     this.startTime = performance.now();
-
-    this.failedAttempts = 0;
   }
 
   update() {
     if (!this.motion) return;
 
-    const frames = this.motion.frames;
+    const keyframes = this.motion.keyframes;
+    if (!keyframes || keyframes.length < 2) return;
 
-    if (!frames || frames.length === 0) return;
+    const duration =
+      this.motion.duration ??
+      keyframes[keyframes.length - 1].time;
+
+    if (!duration || duration <= 0) return;
+
+    const tGlobal =
+      ((performance.now() - this.startTime) / 1000) %
+      duration;
 
     // =========================
-    // LOOP TIME
+    // FIND SURROUNDING KEYFRAMES
     // =========================
 
-    const duration = frames[frames.length - 1].time;
+    let kfA = keyframes[0];
+    let kfB = keyframes[keyframes.length - 1];
 
-    let elapsed = ((performance.now() - this.startTime) / 1000) % duration;
+    for (let i = 0; i < keyframes.length - 1; i++) {
+      const a = keyframes[i];
+      const b = keyframes[i + 1];
 
-    // =========================
-    // FIND FRAME PAIR
-    // =========================
-
-    let prevFrame = frames[0];
-    let nextFrame = frames[0];
-
-    for (let i = 0; i < frames.length - 1; i++) {
-
-      const a = frames[i];
-      const b = frames[i + 1];
-
-      if (
-        elapsed >= a.time &&
-        elapsed <= b.time
-      ) {
-        prevFrame = a;
-        nextFrame = b;
+      if (tGlobal >= a.time && tGlobal <= b.time) {
+        kfA = a;
+        kfB = b;
         break;
       }
     }
 
+    const span = kfB.time - kfA.time;
+
+    const t =
+      span <= 0
+        ? 0
+        : (tGlobal - kfA.time) / span;
+
+    // Blender-like easing
+    const smoothT =
+      t * t * (3 - 2 * t);
+
     // =========================
-    // INTERPOLATION FACTOR
+    // APPLY KEYFRAME POSE
     // =========================
 
-    const frameDelta = nextFrame.time - prevFrame.time;
+    for (const boneName in kfA.bones) {
+      const bone =
+        this.mesh.skeleton.getBoneByName(boneName);
 
-    const t = frameDelta <= 0 ? 0 : (elapsed - prevFrame.time)/ frameDelta;
+      if (!bone) continue;
 
-    // =========================
-    // APPLY BONES
-    // =========================
-    Object.entries(prevFrame.bones).forEach(
-      ([boneName, prevRot]: any) => {
+      const a = kfA.bones[boneName];
+      const b = kfB.bones[boneName];
 
-        const bone =
-          this.mesh.skeleton.getBoneByName(
-            boneName
-          );
+      if (!a || !b) continue;
+      if (a.length < 4 || b.length < 4) continue;
 
-        if (!bone) return;
+      const qa =
+        new THREE.Quaternion(
+          a[0],
+          a[1],
+          a[2],
+          a[3]
+        ).normalize();
 
-        const nextRot =
-          nextFrame.bones[boneName];
+      const qb =
+        new THREE.Quaternion(
+          b[0],
+          b[1],
+          b[2],
+          b[3]
+        ).normalize();
 
-        if (
-          !Array.isArray(prevRot) ||
-          prevRot.length < 4
-        ) {
-          return;
-        }
-
-        if (
-          !Array.isArray(nextRot) ||
-          nextRot.length < 4
-        ) {
-          return;
-        }
-
-        try {
-
-          // =========================
-          // PREV QUAT
-          // =========================
-
-          const qa =
-            new THREE.Quaternion(
-              prevRot[0],
-              prevRot[1],
-              prevRot[2],
-              prevRot[3]
-            );
-
-          // =========================
-          // NEXT QUAT
-          // =========================
-
-          const qb =
-            new THREE.Quaternion(
-              nextRot[0],
-              nextRot[1],
-              nextRot[2],
-              nextRot[3]
-            );
-
-          // =========================
-          // FIX QUATERNION FLIPPING
-          // =========================
-
-          if (qa.dot(qb) < 0) {
-
-            qb.x *= -1;
-            qb.y *= -1;
-            qb.z *= -1;
-            qb.w *= -1;
-          }
-
-          // =========================
-          // SLERP
-          // =========================
-
-          bone.quaternion.slerpQuaternions(
-            qa,
-            qb,
-            t
-          );
-
-        } catch (error) {
-
-          console.error(
-            "Quaternion error:",
-            boneName,
-            error
-          );
-        }
+      if (qa.dot(qb) < 0) {
+        qb.x *= -1;
+        qb.y *= -1;
+        qb.z *= -1;
+        qb.w *= -1;
       }
-    );
+
+      bone.quaternion.slerpQuaternions(
+        qa,
+        qb,
+        smoothT
+      );
+    }
   }
 }
-
-
-    
