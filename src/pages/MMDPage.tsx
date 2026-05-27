@@ -9,9 +9,6 @@ import { MotionPlayer } from "../engine/MotionPlayer";
 import ChatPanel from "../components/ChatPanel";
 import { VMDExporter } from "../engine/VMDExporter";
 
-import { generateMotionPlan } from "../services/generateMotionPlan";
-import { compileMotionPlan } from "../engine/MotionCompiler";
-
 export default function MMDPage() {
   const playerRef = useRef<any>(null);
   const mountRef = useRef<HTMLDivElement>(null);
@@ -19,10 +16,15 @@ export default function MMDPage() {
 
   const [motionData, setMotionData] = useState<any>(null);
 
-  const loadedRef = useRef(false);
-
   useEffect(() => {
     if (!mountRef.current) return;
+
+    let disposed = false;
+    let animationFrameId = 0;
+    let mesh: any = null;
+
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
 
     // =========================
     // Scene
@@ -52,8 +54,18 @@ export default function MMDPage() {
       antialias: true,
     });
 
+    renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
+
+    renderer.domElement.style.display = "block";
+    renderer.domElement.style.position = "absolute";
+    renderer.domElement.style.top = "0";
+    renderer.domElement.style.left = "0";
+    renderer.domElement.style.width = "100%";
+    renderer.domElement.style.height = "100%";
+    renderer.domElement.style.touchAction = "none";
+    renderer.domElement.style.pointerEvents = "auto";
 
     mountRef.current.appendChild(renderer.domElement);
 
@@ -63,19 +75,25 @@ export default function MMDPage() {
 
     const controls = new OrbitControls(camera, renderer.domElement);
 
+    controls.enabled = true;
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
+
     controls.enableRotate = true;
     controls.enableZoom = true;
     controls.enablePan = true;
-    controls.screenSpacePanning = false;
+
+    controls.rotateSpeed = 0.8;
+    controls.zoomSpeed = 1.0;
+    controls.panSpeed = 0.8;
+
+    controls.screenSpacePanning = true;
     controls.minDistance = 10;
     controls.maxDistance = 100;
 
-    // Allow full rotation around model
+    controls.minPolarAngle = 0;
     controls.maxPolarAngle = Math.PI;
 
-    // Focus orbit around character
     controls.target.set(0, 10, 0);
     controls.update();
 
@@ -83,15 +101,15 @@ export default function MMDPage() {
     // Lights
     // =========================
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.45);
     scene.add(ambient);
 
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.5);
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
     scene.add(hemiLight);
 
-    const dir = new THREE.DirectionalLight(0xffffff, 1);
-    dir.position.set(5, 10, 7);
-    dir.castShadow = true;
+    //Do not cast shadow 
+    const dir = new THREE.DirectionalLight(0xffffff, 1.5);
+    dir.position.set(-30, 50, 25);
     scene.add(dir);
 
     // =========================
@@ -118,24 +136,26 @@ export default function MMDPage() {
     const loader = new MMDLoader();
     const helper = new MMDAnimationHelper();
 
-    let mesh: any;
-
-    const findBone = (mesh: any, name: string) => {
-      return mesh.skeleton.bones.findIndex((bone: any) => bone.name === name);
-    };
+    console.log("Starting MMD load...");
 
     loader.loadWithAnimation(
       "/models/cyrene.pmx",
       "/motions/motion.vmd",
       (mmd) => {
-        if (loadedRef.current) return;
+        if (disposed) {
+          console.warn("MMD load finished after cleanup. Ignoring stale load.");
+          return;
+        }
 
-        loadedRef.current = true;
+        console.log("MMD loaded successfully:", mmd);
 
         mesh = mmd.mesh;
 
         mesh.castShadow = true;
         mesh.receiveShadow = true;
+
+        // Keep model aligned with your floor/camera setup
+        mesh.position.set(0, -10, 0);
 
         // Debug bone names
         mesh.skeleton.bones.forEach((bone: any, index: number) => {
@@ -145,113 +165,24 @@ export default function MMDPage() {
         scene.add(mesh);
 
         // =========================
-        // ARM IK SETUP
+        // BUILT-IN PMX IK SETUP
         // =========================
+        // Use the PMX model's own IK definitions.
+        // This is safer than manually creating leg IK rules.
 
-        const rightWrist = findBone(mesh, "右手首");
-        const rightHandTwist = findBone(mesh, "右手捩");
-        const rightElbow = findBone(mesh, "右ひじ");
-        const rightArmTwist = findBone(mesh, "右腕捩");
-        const rightArm = findBone(mesh, "右腕");
-        const rightShoulderC = findBone(mesh, "右肩C");
-        const rightShoulder = findBone(mesh, "右肩");
+        const pmxIKs = mesh.geometry.userData.MMD?.iks;
 
-        const leftWrist = findBone(mesh, "左手首");
-        const leftHandTwist = findBone(mesh, "左手捩");
-        const leftElbow = findBone(mesh, "左ひじ");
-        const leftArmTwist = findBone(mesh, "左腕捩");
-        const leftArm = findBone(mesh, "左腕");
-        const leftShoulderC = findBone(mesh, "左肩C");
-        const leftShoulder = findBone(mesh, "左肩");
-
-        const armBones = [
-          rightWrist,
-          rightHandTwist,
-          rightElbow,
-          rightArmTwist,
-          rightArm,
-          rightShoulderC,
-          rightShoulder,
-          leftWrist,
-          leftHandTwist,
-          leftElbow,
-          leftArmTwist,
-          leftArm,
-          leftShoulderC,
-          leftShoulder,
-        ];
-
-        if (armBones.some((index) => index < 0)) {
-          console.warn(
-            "Arm IK disabled because one or more bones were not found:",
-            {
-              rightWrist,
-              rightHandTwist,
-              rightElbow,
-              rightArmTwist,
-              rightArm,
-              rightShoulderC,
-              rightShoulder,
-              leftWrist,
-              leftHandTwist,
-              leftElbow,
-              leftArmTwist,
-              leftArm,
-              leftShoulderC,
-              leftShoulder,
-            }
-          );
+        if (!pmxIKs || pmxIKs.length === 0) {
+          console.warn("No built-in PMX IK data found.");
         } else {
-          const iks = [
-            {
-              target: rightWrist,
-              effector: rightWrist,
-              links: [
-                { index: rightHandTwist },
-                { index: rightElbow },
-                { index: rightArmTwist },
-                { index: rightArm },
-                { index: rightShoulderC },
-                { index: rightShoulder },
-              ],
-              iteration: 10,
-            },
-            {
-              target: leftWrist,
-              effector: leftWrist,
-              links: [
-                { index: leftHandTwist },
-                { index: leftElbow },
-                { index: leftArmTwist },
-                { index: leftArm },
-                { index: leftShoulderC },
-                { index: leftShoulder },
-              ],
-              iteration: 10,
-            },
-          ];
+          console.log("Using built-in PMX IKs:", pmxIKs);
 
-          ikSolverRef.current = new CCDIKSolver(mesh, iks);
+          ikSolverRef.current = new CCDIKSolver(mesh, pmxIKs);
 
-          console.log("Arm IK enabled:", {
-            rightWrist,
-            rightHandTwist,
-            rightElbow,
-            rightArmTwist,
-            rightArm,
-            rightShoulderC,
-            rightShoulder,
-            leftWrist,
-            leftHandTwist,
-            leftElbow,
-            leftArmTwist,
-            leftArm,
-            leftShoulderC,
-            leftShoulder,
-          });
+          console.log("Built-in PMX IK solver enabled.");
         }
 
-        // AI Motion Player
+        // AI / Manual Motion Player
         playerRef.current = new MotionPlayer(mesh);
 
         // MMD Helper
@@ -269,17 +200,21 @@ export default function MMDPage() {
     const clock = new THREE.Clock();
 
     const animate = () => {
-      requestAnimationFrame(animate);
+      animationFrameId = requestAnimationFrame(animate);
 
       const delta = clock.getDelta();
 
+      // Let MMD helper update first.
       helper.update(delta);
 
+      // Then apply your generated/manual motion.
       playerRef.current?.update();
 
-      // if (mesh && ikSolverRef.current) {
-      //   ikSolverRef.current.update();
-      // }
+      // Then solve leg IK after MotionPlayer moves IK target positions.
+      if (mesh && ikSolverRef.current) {
+        mesh.updateMatrixWorld(true);
+        ikSolverRef.current.update();
+      }
 
       controls.update();
 
@@ -306,19 +241,35 @@ export default function MMDPage() {
     // =========================
 
     return () => {
+      disposed = true;
+
       window.removeEventListener("resize", onResize);
+      document.body.style.overflow = previousBodyOverflow;
+
+      cancelAnimationFrame(animationFrameId);
 
       controls.dispose();
+
+      if (mesh) {
+        scene.remove(mesh);
+      }
+
       renderer.dispose();
 
-      if (mountRef.current) {
+      playerRef.current = null;
+      ikSolverRef.current = null;
+
+      if (
+        mountRef.current &&
+        renderer.domElement.parentElement === mountRef.current
+      ) {
         mountRef.current.removeChild(renderer.domElement);
       }
     };
   }, []);
 
   // =========================
-  // Load AI Motion
+  // Load AI / Manual Motion
   // =========================
 
   useEffect(() => {
@@ -351,39 +302,8 @@ export default function MMDPage() {
     URL.revokeObjectURL(url);
   };
 
-  const testSemanticMotion = async () => {
-    try {
-      const plan = await generateMotionPlan(
-        "two arms reach forward and bend like holding something"
-      );
-
-      console.log("SEMANTIC MOTION PLAN:", plan);
-
-      const motion = compileMotionPlan(plan);
-
-      console.log("COMPILED MOTION:", motion);
-
-      setMotionData(motion);
-    } catch (error) {
-      console.error("Semantic motion test failed:", error);
-    }
-  };
-
   return (
     <>
-      {/* Chat UI Overlay */}
-      <div
-        style={{
-          position: "fixed",
-          top: 20,
-          left: 20,
-          zIndex: 100,
-          pointerEvents: "auto",
-        }}
-      >
-        <ChatPanel onMotionGenerated={setMotionData} />
-      </div>
-
       {/* Three.js Canvas */}
       <div
         ref={mountRef}
@@ -392,27 +312,38 @@ export default function MMDPage() {
           height: "100vh",
           overflow: "hidden",
           position: "fixed",
-          top: 0,
-          left: 0,
-          zIndex: 0,
+          inset: 0,
+          zIndex: 1,
+          pointerEvents: "auto",
         }}
       />
 
-      {/* Buttons Overlay */}
+      {/* Chat UI Overlay */}
       <div
         style={{
           position: "fixed",
           top: 20,
           left: 20,
-          zIndex: 20,
+          zIndex: 50,
+          pointerEvents: "auto",
+        }}
+      >
+        <ChatPanel onMotionGenerated={setMotionData} />
+      </div>
+
+      {/* Buttons Overlay */}
+      <div
+        style={{
+          position: "fixed",
+          right: 20,
+          bottom: 20,
+          zIndex: 50,
           pointerEvents: "auto",
         }}
       >
         <button
           onClick={downloadVMD}
           style={{
-            marginTop: 10,
-            marginLeft: 400,
             padding: "10px 20px",
             cursor: "pointer",
           }}
@@ -425,7 +356,6 @@ export default function MMDPage() {
           onClick={testSemanticMotion}
           style={{
             marginTop: 10,
-            marginLeft: 400,
             padding: "10px 20px",
             cursor: "pointer",
             display: "block",
@@ -434,7 +364,6 @@ export default function MMDPage() {
           Test Semantic Motion
         </button>
         */}
-
       </div>
     </>
   );

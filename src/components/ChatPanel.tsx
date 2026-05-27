@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { compileMotionPlan } from "../engine/MotionCompiler";
 import { generateMotion } from "../services/generateMotion";
+import { generateMotionPlan } from "../services/generateMotionPlan";
 
 interface Props {
   onMotionGenerated: (motion: any) => void;
@@ -41,6 +43,26 @@ export default function ChatPanel({
     setLoading(false);
   }
 
+  async function handleGenerateMotionPlan() {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const plan = await generateMotionPlan(prompt);
+      const motion = compileMotionPlan(plan);
+
+      console.log("AI MOTION PLAN:", plan);
+      console.log("COMPILED MOTION:", motion);
+
+      onMotionGenerated(motion);
+    } catch (err: any) {
+      console.error(err);
+      setError("Motion plan generation failed");
+    }
+
+    setLoading(false);
+  }
+
   // =========================
   // MANUAL JSON MODE
   // =========================
@@ -55,8 +77,23 @@ export default function ChatPanel({
         return;
       }
 
+      if (Array.isArray(parsed.actions)) {
+        if (parsed.actions.length < 1) {
+          setError("Invalid motion plan JSON: missing actions");
+          return;
+        }
+
+        const motion = compileMotionPlan(parsed);
+
+        console.log("MANUAL MOTION PLAN:", parsed);
+        console.log("COMPILED MANUAL MOTION:", motion);
+
+        onMotionGenerated(motion);
+        return;
+      }
+
       if (!Array.isArray(parsed.keyframes)) {
-        setError("Invalid motion JSON: missing keyframes");
+        setError("Invalid JSON: expected keyframes or actions");
         return;
       }
 
@@ -161,6 +198,22 @@ export default function ChatPanel({
           >
             {loading ? "Generating..." : "Generate Motion"}
           </button>
+
+          <button
+            type="button"
+            onClick={handleGenerateMotionPlan}
+            disabled={loading}
+            style={{
+              width: "100%",
+              padding: 10,
+              marginTop: 8,
+              background: "#333",
+              color: "white",
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+          >
+            Generate Motion Plan
+          </button>
         </>
       )}
 
@@ -172,7 +225,7 @@ export default function ChatPanel({
           <textarea
             value={jsonInput}
             onChange={(e) => setJsonInput(e.target.value)}
-            placeholder="Paste motion JSON here (40KB+ supported)"
+            placeholder="Paste motion JSON or motion plan JSON here"
             rows={10}
             style={{
               width: "95%",

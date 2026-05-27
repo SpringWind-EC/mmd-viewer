@@ -14,6 +14,9 @@ The user may type simple prompts such as:
 - reach forward
 - two-arm pose
 - dance sway
+- bend knees
+- fighting stance
+- step pose
 
 The user is NOT expected to describe quaternion math, bone signs, calibration values, keyframes, or anti-clipping rules.
 
@@ -46,6 +49,78 @@ VALID BONES:
 ${boneText}
 
 ==================================================
+OUTPUT FORMAT
+==================================================
+
+Return EXACTLY this JSON structure:
+
+{
+  "duration": number,
+  "loop": boolean,
+  "keyframes": [
+    {
+      "time": number,
+      "bones": {
+        "骨名": [x, y, z, w]
+      }
+    }
+  ]
+}
+
+Do NOT include "positions" unless the user explicitly asks for IK target movement.
+
+For this model, visible leg movement should use D leg bones, not IK target positions.
+
+==================================================
+KEYFRAME SYSTEM
+==================================================
+
+Generate sparse Blender-style keyframes.
+
+DO NOT generate dense frame-by-frame motion.
+
+Keyframe rules:
+- minimum keyframes: 2
+- maximum keyframes: 10
+- maximum duration: 3 seconds
+- use naturally spaced time values
+- use fewer keyframes for simple actions
+- use more keyframes only for anticipation, impact, follow-through, or hold
+
+For non-idle actions, prefer:
+- start pose
+- main action pose
+- final held pose
+
+Unless the user explicitly asks for a loop:
+- set "loop": false
+- final keyframe should hold the intended pose
+- do not return to A-pose
+
+For idle or loop motions:
+- set "loop": true
+- first and last keyframes should be compatible
+
+==================================================
+ROTATION SYSTEM
+==================================================
+
+All rotations MUST use quaternions.
+
+Quaternion format:
+
+[x, y, z, w]
+
+Rules:
+- every quaternion MUST contain 4 numbers
+- quaternions MUST be near-normalized
+- w component is required
+- preserve shortest rotational path
+- avoid quaternion sign flipping
+- avoid unstable spinning
+- preserve continuity between keyframes
+
+==================================================
 MODEL ASSUMPTIONS
 ==================================================
 
@@ -60,87 +135,10 @@ The character begins in a relaxed A-pose:
 
 The A-pose is only the starting reference pose.
 
-DO NOT automatically return to A-pose at the end.
-
-The final keyframe should hold the final intended pose unless the user explicitly asks for a loop, recovery, or return motion.
+Do NOT automatically return to A-pose at the end.
 
 ==================================================
-OUTPUT FORMAT
-==================================================
-
-Return EXACTLY this JSON structure:
-
-{
-  "duration": number,
-  "keyframes": [
-    {
-      "time": number,
-      "bones": {
-        "骨名": [x, y, z, w]
-      }
-    }
-  ]
-}
-
-==================================================
-BLENDER-STYLE KEYFRAME SYSTEM
-==================================================
-
-Generate sparse keyframes like Blender.
-
-DO NOT generate dense frame-by-frame motion.
-
-DO NOT generate 0.1 second sampled frames.
-
-Each keyframe represents an important pose.
-
-The engine performs interpolation between keyframes using SLERP.
-
-Keyframe rules:
-- minimum keyframes: 2
-- maximum keyframes: 10
-- time values are floating-point seconds
-- maximum duration: 3 seconds
-- keyframes should be naturally spaced
-- use fewer keyframes for simple actions
-- use more keyframes only when the action needs anticipation, impact, follow-through, or hold
-
-Good timing examples:
-- 0.0, 0.8, 1.6
-- 0.0, 0.5, 1.2, 2.0
-- 0.0, 0.4, 1.0, 1.8, 3.0
-
-For non-idle actions, prefer at least 3 keyframes:
-- start pose
-- main action pose
-- final held pose
-
-Use only 2 keyframes for very simple small motions.
-
-==================================================
-ROTATION SYSTEM
-==================================================
-
-All rotations MUST use quaternions.
-
-Quaternion format:
-
-[x, y, z, w]
-
-DO NOT use Euler rotations.
-
-Quaternion rules:
-- every quaternion MUST contain 4 numbers
-- quaternions MUST be near-normalized
-- w component is required
-- preserve shortest rotational path
-- avoid quaternion sign flipping
-- avoid orientation inversion
-- avoid unstable spinning
-- preserve continuity between keyframes
-
-==================================================
-MOTION INTERPRETATION RULES
+GENERAL MOTION RULES
 ==================================================
 
 Convert user intent into natural body motion.
@@ -157,41 +155,33 @@ Do not over-animate.
 
 Do not animate the whole body unless the request needs it.
 
-For small gestures, use small upper-body motion.
+For small gestures:
+- use small upper-body motion
 
-For strong actions, use torso, shoulders, and hips for support.
+For strong actions:
+- use torso, shoulders, hips, arms, and legs for support
 
 ==================================================
-MOTION INTENSITY INTERPRETATION RULES
+INTENSITY RULES
 ==================================================
 
-The user may use simple words such as:
-- slight
-- small
-- subtle
-- normal
-- visible
-- strong
-- dramatic
-
-Interpret motion intensity as follows:
+Interpret intensity naturally.
 
 SUBTLE motion:
-- use small rotations
-- use mild joint bends
-- keep movement close to A-pose
+- small rotations
+- mild joint bends
+- close to A-pose
 
 NORMAL motion:
-- use clearly visible rotations
-- use medium joint bends
-- pose should be readable from the camera
+- clearly visible rotations
+- medium joint bends
+- readable from camera
 
-VISIBLE or STRONG motion:
-- use larger but safe rotations
-- the motion must be clearly noticeable
-- do not use tiny values
-- do not keep limbs close to A-pose
-- use medium-to-strong joint bends
+VISIBLE / STRONG / DRAMATIC motion:
+- larger but safe rotations
+- clearly noticeable pose
+- medium-to-strong bends
+- do not keep limbs too close to A-pose
 
 If the user asks for:
 - bent elbows
@@ -199,184 +189,24 @@ If the user asks for:
 - guard
 - reach
 - punch
-- pose
 - fighting stance
+- bend knees
+- crouch
+- ready pose
 
-then the motion should be clearly visible, not subtle.
-
-Do NOT use weak values for clearly visible actions.
-
-==================================================
-KEYFRAME CONSISTENCY RULES
-==================================================
-
-If a bone is important to the motion, include that bone in every keyframe.
-
-For arm motion:
-- include shoulder
-- include upper arm
-- include elbow
-- include wrist when needed
-
-For torso-supported motion:
-- include relevant spine bones consistently
-
-For head motion:
-- include neck and head consistently
-
-Do not omit important bones halfway through the motion.
-
-Unrelated bones should not be included.
+then the motion should be clearly visible, not tiny.
 
 ==================================================
-BODY MECHANICS RULES
+CONFIRMED ARM CALIBRATION
 ==================================================
-
-Movement must obey natural hierarchy.
-
-General rules:
-- hips support body balance
-- spine supports upper-body motion
-- shoulders support arm motion
-- elbows bend naturally
-- wrists make small corrections only
-- neck supports head direction
-- child bones should not perform the entire motion alone
-
-Natural arm motion should combine:
-- shoulder support
-- upper arm direction
-- elbow bend
-- subtle wrist correction
-
-Natural full-body motion should combine:
-- hips
-- spine
-- shoulders
-- head
-- limbs
-
-Do not make a single bone perform a complex action by itself.
-
-==================================================
-DIRECTION RULES
-==================================================
-
-This PMX model has model-specific local bone axes.
-
-DO NOT assume generic world-space axes.
-
-DO NOT assume camera direction.
-
-DO NOT assume Three.js global X/Y/Z directions.
-
-All direction words must be interpreted relative to the CHARACTER:
-
-- forward = toward the character's front/chest direction
-- backward = behind the character
-- left = character's left side
-- right = character's right side
-- up = toward the character's head
-- down = toward the character's feet
-- inward = toward the body centerline
-- outward = away from the body centerline
-
-When exact calibration is known, use it.
-
-When calibration is unknown:
-- use safe but still visible quaternion rotations
-- do not make the motion so small that the action is unreadable
-- avoid extreme directional assumptions
-- support limb motion with parent bones
-- preserve anatomical plausibility
-
-==================================================
-CONFIRMED MODEL CALIBRATION
-==================================================
-
-Use these confirmed model-specific rules.
 
 This PMX model does NOT use generic mirrored quaternion values.
 
-For mirrored two-arm motion, do NOT copy identical quaternion values to both arms.
+For mirrored two-arm motion, DO NOT copy identical upper-arm quaternions to both arms.
 
-Confirmed mirror rule from right arm to left arm:
+Use the right arm as the reference side.
 
-RIGHT ARM / 右腕:
-- Use the right arm as the reference side when generating symmetrical arm poses.
-- For visible forward / holding / reaching motion, right arm may use:
-  [-x, +y, +z, w]
-
-LEFT ARM / 左腕:
-- The left arm must mirror the right arm by flipping Y and Z.
-- Confirmed mirror rule:
-  左腕 = [右腕.x, -右腕.y, -右腕.z, 右腕.w]
-- Example confirmed symmetric pair:
-  右腕: [-0.15,  0.15,  0.08, 0.9701]
-  左腕: [-0.15, -0.15, -0.08, 0.9701]
-- Do NOT give 左腕 the same quaternion as 右腕 for symmetrical motion.
-- Do NOT use:
-  左腕: [-0.15, 0.15, 0.08, 0.9701]
-  when 右腕 is also [-0.15, 0.15, 0.08, 0.9701],
-  because this causes same-direction motion instead of mirrored motion.
-
-RIGHT WRIST / 右手首:
-- Wrist motion should be subtle.
-- For symmetrical wrist correction, use the right wrist as reference.
-
-LEFT WRIST / 左手首:
-- The left wrist should usually mirror the right wrist by flipping Y.
-- Confirmed example:
-  右手首: [0,  0.08, 0, 0.9968]
-  左手首: [0, -0.08, 0, 0.9968]
-- Mirror rule:
-  左手首 = [右手首.x, -右手首.y, 右手首.z, 右手首.w]
-
-RIGHT ELBOW / 右ひじ:
-- Natural bend uses negative X.
-- Positive X may look like backward or broken bending.
-- Right elbow bend intensity guide:
-  mild bend: approximately [-0.18, 0, 0, 0.98]
-  medium bend: approximately [-0.30, 0, 0, 0.95]
-  strong bend: approximately [-0.60, 0, 0, 0.78]
-
-LEFT ELBOW / 左ひじ:
-- Current confirmed symmetrical test keeps left elbow same as right elbow.
-- Natural bend uses negative X.
-- Mirror rule for current calibration:
-  左ひじ = [右ひじ.x, 右ひじ.y, 右ひじ.z, 右ひじ.w]
-- Confirmed example:
-  右ひじ: [-0.50, 0, 0, 0.8660]
-  左ひじ: [-0.50, 0, 0, 0.8660]
-- Avoid positive X elbow bending unless future calibration proves otherwise.
-- Bend naturally.
-- Avoid backward bending.
-- Avoid sideways twisting.
-
-RIGHT SHOULDER / 右肩:
-- Shoulders should support arm motion gently.
-- Shoulder motion should be smaller than upper-arm motion.
-- Avoid large shoulder twisting.
-
-LEFT SHOULDER / 左肩:
-- Current confirmed symmetrical test keeps left shoulder same as right shoulder.
-- Mirror rule for current calibration:
-  左肩 = [右肩.x, 右肩.y, 右肩.z, 右肩.w]
-- Confirmed example:
-  右肩: [-0.05, 0, 0, 0.9987]
-  左肩: [-0.05, 0, 0, 0.9987]
-- Avoid large shoulder twisting.
-
-TWO-ARM SYMMETRY RULE:
-When the user asks for:
-- both arms forward
-- holding something
-- two hands pose
-- guard pose
-- reach forward with both arms
-- symmetrical arm pose
-
-Generate the right arm first, then generate the left arm by applying the confirmed mirror rule:
+Confirmed mirror rule:
 
 右腕 = [x, y, z, w]
 左腕 = [x, -y, -z, w]
@@ -390,192 +220,254 @@ Generate the right arm first, then generate the left arm by applying the confirm
 右肩 = [x, y, z, w]
 左肩 = [x, y, z, w]
 
-Do NOT output identical left and right upper-arm quaternions for symmetrical poses.
+Confirmed symmetric arm example:
 
-ARM FORWARD / HOLDING INTENSITY GUIDE:
+右肩: [-0.05, 0, 0, 0.9987]
+左肩: [-0.05, 0, 0, 0.9987]
 
-Mild symmetrical forward / holding:
-右腕: [-0.15,  0.15,  0.08, 0.9701]
+右腕: [-0.15, 0.15, 0.08, 0.9701]
 左腕: [-0.15, -0.15, -0.08, 0.9701]
-右ひじ: [-0.18, 0, 0, 0.98]
-左ひじ: [-0.18, 0, 0, 0.98]
 
-Medium symmetrical forward / holding:
-右腕: [-0.22,  0.25,  0.14, 0.93]
-左腕: [-0.22, -0.25, -0.14, 0.93]
-右ひじ: [-0.30, 0, 0, 0.95]
-左ひじ: [-0.30, 0, 0, 0.95]
+右ひじ: [-0.50, 0, 0, 0.8660]
+左ひじ: [-0.50, 0, 0, 0.8660]
 
-Strong symmetrical forward / holding:
-右腕: [-0.30,  0.38,  0.20, 0.86]
-左腕: [-0.30, -0.38, -0.20, 0.86]
-右ひじ: [-0.55, 0, 0, 0.83]
-左ひじ: [-0.55, 0, 0, 0.83]
-
-Use bend intensity based on the user request:
-- subtle motion: mild bend
-- normal motion: medium bend
-- clearly bent / strong / defensive / flexed / holding motion: strong bend
-
-SHOULDERS:
-- shoulders should support arm motion gently.
-- avoid large shoulder twisting.
-- shoulders should not drive the entire action alone.
-- shoulder motion should be smaller than upper-arm motion.
-- for symmetrical two-arm poses, shoulder values may stay same on both sides unless the motion clearly requires asymmetry.
-
-WRISTS:
-- wrists should make subtle corrections only.
-- wrists should not define main limb direction.
-- wrist motion should be smaller than elbow and upper-arm motion.
-- for symmetrical two-arm poses, flip left wrist Y relative to right wrist Y.
-
-SPINE:
-- distribute torso motion across spine bones.
-- do not put all torso rotation into one spine bone.
-- spine should support arm, head, and balance changes.
-
-HEAD AND NECK:
-- head should support the motion naturally.
-- avoid extreme rotation.
-- avoid full inversion.
-- use neck and head together for looking motions.
-
-HIPS AND LOWER BODY:
-- hips preserve balance.
-- legs should remain grounded unless the user asks for leg movement.
-- avoid foot penetration.
-- avoid knee hyperextension.
-
-==================================================
-BEND AND JOINT SAFETY RULES
-==================================================
-
-Elbows and knees must bend anatomically.
-
-Do NOT:
-- bend elbows backward
-- bend knees backward
-- twist elbows sideways
-- twist wrists excessively
-- hyperextend limbs
-- stretch limbs
-- cause IK snapping
-
-If a bend looks uncertain:
-- reduce the bend
-- use parent bone support
-- keep the pose readable and safe
+右手首: [0, 0.08, 0, 0.9968]
+左手首: [0, -0.08, 0, 0.9968]
 
 For visible elbow bending:
-- use medium-to-strong bend
-- do not leave the elbow almost straight
-- do not rely only on shoulder or upper arm motion
-
-For right elbow:
-- use the confirmed negative X calibration
-
-For left elbow:
-- use the confirmed negative X calibration
+- use negative X on both elbows
+- mild bend: [-0.18, 0, 0, 0.98]
+- medium bend: [-0.30, 0, 0, 0.95]
+- strong bend: [-0.50, 0, 0, 0.8660]
 
 ==================================================
-SPACING AND CLIPPING RULES
+CONFIRMED LEG CALIBRATION
 ==================================================
 
-The model has visible body volume.
+This PMX model uses D leg bones for visible leg deformation.
 
-Avoid body part overlap.
+For visible leg motion, use ONLY these leg bones:
+
+右足D
+右ひざD
+右足首D
+左足D
+左ひざD
+左足首D
+
+Do NOT rely on these regular leg bones for visible leg motion:
+
+右足
+右ひざ
+右足首
+左足
+左ひざ
+左足首
+
+They may exist, but they do not drive visible leg movement correctly in this setup.
+
+Confirmed knee-bend pose:
+
+右足D: [-0.18, 0, 0, 0.9840]
+右ひざD: [0.35, 0, 0, 0.9360]
+右足首D: [0.18, 0, 0, 0.9840]
+
+左足D: [-0.18, 0, 0, 0.9840]
+左ひざD: [0.35, 0, 0, 0.9360]
+左足首D: [0.18, 0, 0, 0.9840]
+
+Important:
+- For this model's D knee bones, positive X bends the knee correctly.
+- Do NOT use negative X for 右ひざD or 左ひざD knee bend.
+- 足D can use negative X for leg/thigh bend.
+- 足首D can use positive X for ankle correction.
+
+Leg bend intensity guide:
+
+Mild knee bend:
+右足D: [-0.10, 0, 0, 0.9950]
+右ひざD: [0.18, 0, 0, 0.9840]
+右足首D: [0.10, 0, 0, 0.9950]
+左足D: [-0.10, 0, 0, 0.9950]
+左ひざD: [0.18, 0, 0, 0.9840]
+左足首D: [0.10, 0, 0, 0.9950]
+
+Medium knee bend:
+右足D: [-0.18, 0, 0, 0.9840]
+右ひざD: [0.35, 0, 0, 0.9360]
+右足首D: [0.18, 0, 0, 0.9840]
+左足D: [-0.18, 0, 0, 0.9840]
+左ひざD: [0.35, 0, 0, 0.9360]
+左足首D: [0.18, 0, 0, 0.9840]
+
+Strong knee bend:
+右足D: [-0.28, 0, 0, 0.9600]
+右ひざD: [0.50, 0, 0, 0.8660]
+右足首D: [0.25, 0, 0, 0.9680]
+左足D: [-0.28, 0, 0, 0.9600]
+左ひざD: [0.50, 0, 0, 0.8660]
+左足首D: [0.25, 0, 0, 0.9680]
+
+For crouch, fighting stance, ready stance, knee bend, or stable pose:
+- include 足D, ひざD, and 足首D consistently in every keyframe
+- use positive X on ひざD
+- use moderate rotations
+- keep feet visually stable
+- avoid rolling the whole body
+
+==================================================
+CONFIRMED TORSO CALIBRATION
+==================================================
+
+For this PMX model, torso forward/backward bending uses model-specific X signs.
+
+To bend the body forward, use POSITIVE X on torso bones:
+
+上半身: positive X
+上半身2: positive X
+
+Confirmed forward lean example:
+上半身: [0.06, 0, 0, 0.9982]
+上半身2: [0.04, 0, 0, 0.9992]
+
+For running, dodging forward, bowing, crouching forward, reaching forward, or aggressive fighting stance:
+- use positive X on 上半身 and 上半身2
+- keep the lean moderate
+- do not use negative X for forward torso lean
+- avoid leaning the body backward unless the user explicitly asks for backward lean
+
+For backward lean:
+- use negative X on 上半身 and 上半身2 only when the user explicitly asks to lean backward, recoil, dodge backward, or arch back
+
+Torso lean intensity guide:
+
+Mild forward lean:
+上半身: [0.04, 0, 0, 0.9992]
+上半身2: [0.02, 0, 0, 0.9998]
+
+Medium forward lean:
+上半身: [0.08, 0, 0, 0.9968]
+上半身2: [0.05, 0, 0, 0.9987]
+
+Strong forward lean:
+上半身: [0.12, 0, 0, 0.9928]
+上半身2: [0.08, 0, 0, 0.9968]
+
+==================================================
+BODY MECHANICS RULES
+==================================================
+
+Movement must obey natural hierarchy.
+
+Natural arm motion should combine:
+- shoulder support
+- upper arm direction
+- elbow bend
+- subtle wrist correction
+
+Natural leg motion should combine:
+- thigh/leg direction with 足D
+- knee bend with ひざD
+- ankle correction with 足首D
+
+Natural full-body motion should combine:
+- hips
+- spine
+- shoulders
+- head
+- arms
+- D leg bones
+
+Do not make a single bone perform a complex action by itself.
+
+==================================================
+DIRECTION RULES
+==================================================
+
+This PMX model has model-specific local bone axes.
+
+DO NOT assume generic world-space axes.
+DO NOT assume camera direction.
+DO NOT assume Three.js global X/Y/Z directions.
+
+All direction words must be interpreted relative to the CHARACTER:
+
+- forward = toward the character's front/chest direction
+- backward = behind the character
+- left = character's left side
+- right = character's right side
+- up = toward the character's head
+- down = toward the character's feet
+- inward = toward the body centerline
+- outward = away from the body centerline
+
+Use confirmed calibration whenever available.
+
+==================================================
+KEYFRAME CONSISTENCY RULES
+==================================================
+
+If a bone is important to the motion, include that bone in every keyframe.
+
+For arm motion, include:
+- shoulder
+- upper arm
+- elbow
+- wrist when needed
+
+For leg motion, include:
+- 足D
+- ひざD
+- 足首D
+
+For torso-supported motion, include:
+- 下半身
+- 上半身
+- 上半身1 or 上半身2 when useful
+
+For head motion, include:
+- 首
+- 頭
+
+Unrelated bones should not be included.
+
+==================================================
+SAFETY AND QUALITY RULES
+==================================================
+
+Motion should feel like high-quality anime / MMD animation.
+
+Avoid:
+- robotic motion
+- random motion
+- jitter
+- snapping
+- sudden reversals
+- unstable spinning
+- hyperextended limbs
+- broken elbows
+- broken knees
+- excessive wrist twisting
+- excessive shoulder twisting
+- body parts clipping through torso or face
+
+Prefer:
+- readable silhouettes
+- stable poses
+- smooth arcs
+- anticipation
+- easing
+- follow-through
+- moderate parent support
+- visible but safe bends
 
 Maintain visible spacing between:
 - hands and torso
 - arms and chest
 - elbows and body
 - wrists and head
-- left hand and right hand
-- left forearm and right forearm
 - legs and torso
-
-For arm actions:
-- keep elbows outside the torso silhouette
-- avoid hands passing through chest or face
-- avoid arms overlapping unless explicitly requested
-- prefer open readable poses
-
-When uncertain:
-- make the pose slightly wider
-- keep limbs slightly away from the body
-- avoid narrow crossing motions
-
-==================================================
-MOTION QUALITY RULES
-==================================================
-
-Motion should feel like high-quality anime / MMD animation.
-
-Use:
-- anticipation
-- easing
-- follow-through
-- overlapping action
-- momentum
-- acceleration
-- deceleration
-
-Avoid:
-- robotic motion
-- random motion
-- noisy motion
-- jitter
-- snapping
-- vibration
-- sudden reversals
-- meaningless micro-movements
-
-==================================================
-STABILITY RULES
-==================================================
-
-- preserve body balance
-- preserve continuity across keyframes
-- unchanged bones should remain identical
-- do not add tiny random variations
-- do not animate irrelevant bones
-- do not introduce invisible motion
-- avoid fractional noise
-- stable poses are better than noisy poses
-
-==================================================
-IK-FRIENDLY RULES
-==================================================
-
-Motion should remain IK-friendly.
-
-Avoid:
-- extreme shoulder rotations
-- extreme wrist rotations
-- extreme elbow rotations
-- hyperextended limbs
-- unreachable poses
-- poses that require impossible IK correction
-
-Prefer:
-- smooth reachable arcs
-- parent-supported limb movement
-- moderate joint rotations
-- visible but safe bends
-
-==================================================
-END POSE RULES
-==================================================
-
-Unless the user explicitly asks for a loop or recovery:
-- final keyframe holds the intended pose
-- do not return to A-pose
-- do not relax back to neutral
-- do not add cleanup reset behavior
-
-If the user asks for an idle or loop:
-- first and last keyframes should be compatible
+- knees and skirt/body geometry when possible
 
 ==================================================
 FINAL OUTPUT RULES
@@ -595,3 +487,4 @@ USER REQUEST
 ==================================================
 
 ${prompt}
+```

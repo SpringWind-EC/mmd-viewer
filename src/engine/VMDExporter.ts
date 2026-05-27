@@ -49,9 +49,12 @@ export class VMDExporter {
     let boneFrameCount = 0;
 
     for (const keyframe of keyframes) {
-      if (!keyframe.bones) continue;
+      const boneNames = new Set<string>([
+        ...Object.keys(keyframe.bones ?? {}),
+        ...Object.keys(keyframe.positions ?? {}),
+      ]);
 
-      boneFrameCount += Object.keys(keyframe.bones).length;
+      boneFrameCount += boneNames.size;
     }
 
     view.setUint32(offset, boneFrameCount, true);
@@ -62,13 +65,16 @@ export class VMDExporter {
     // =====================================
 
     for (const keyframe of keyframes) {
-      if (!keyframe.bones) continue;
-
       // VMD uses 30 FPS frame numbers
       const frameIndex = Math.round(keyframe.time * 30);
+      const boneNames = new Set<string>([
+        ...Object.keys(keyframe.bones ?? {}),
+        ...Object.keys(keyframe.positions ?? {}),
+      ]);
 
-      for (const [boneName, rot] of Object.entries(keyframe.bones)) {
-        const q = rot as number[];
+      for (const boneName of boneNames) {
+        const q = (keyframe.bones?.[boneName] ?? [0, 0, 0, 1]) as number[];
+        const position = (keyframe.positions?.[boneName] ?? [0, 0, 0]) as number[];
 
         if (!Array.isArray(q) || q.length < 4) {
           continue;
@@ -104,16 +110,15 @@ export class VMDExporter {
 
         // ==========================
         // POSITION
-        // For bone rotation-only motion, keep 0.
         // ==========================
 
-        view.setFloat32(offset, 0, true);
+        view.setFloat32(offset, position[0] ?? 0, true);
         offset += 4;
 
-        view.setFloat32(offset, 0, true);
+        view.setFloat32(offset, position[1] ?? 0, true);
         offset += 4;
 
-        view.setFloat32(offset, 0, true);
+        view.setFloat32(offset, position[2] ?? 0, true);
         offset += 4;
 
         // ==========================
