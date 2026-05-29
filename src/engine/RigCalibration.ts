@@ -7,6 +7,10 @@ type SideMap = {
   right: QuaternionArray;
   left: QuaternionArray;
 };
+type SideIntensityMap = {
+  right: IntensityMap;
+  left: IntensityMap;
+};
 
 export const Bones = {
   center: "センター",
@@ -115,9 +119,9 @@ export const RigCalibration = {
       strong: [-0.35, 0.45, 0.22, 0.8],
     } satisfies IntensityMap,
     guard: {
-      mild: [-0.18, 0.12, 0.12, 0.97],
-      medium: [-0.28, 0.28, 0.18, 0.9],
-      strong: [-0.36, 0.42, 0.24, 0.8],
+      mild: [-0.38, 0, 0.26, 0.93],
+      medium: [-0.5, 0, 0.35, 0.92],
+      strong: [-0.62, 0, 0.44, 0.86],
     } satisfies IntensityMap,
     punch: {
       mild: [-0.25, 0.18, 0.08, 0.95],
@@ -125,9 +129,9 @@ export const RigCalibration = {
       strong: [-0.48, 0.45, 0.15, 0.74],
     } satisfies IntensityMap,
     waveUp: {
-      mild: [-0.28, 0.16, 0.12, 0.94],
-      medium: [-0.42, 0.26, 0.2, 0.84],
-      strong: [-0.55, 0.34, 0.28, 0.7],
+      mild: [-0.28, 0.16, -1, 0.94],
+      medium: [-0.42, 0.26, -1, 0.84],
+      strong: [-0.55, 0.34, -0.8, 0.7],
     } satisfies IntensityMap,
   },
 
@@ -138,9 +142,9 @@ export const RigCalibration = {
       strong: [-0.35, -0.45, -0.22, 0.8],
     } satisfies IntensityMap,
     guard: {
-      mild: [-0.18, -0.12, -0.12, 0.97],
-      medium: [-0.28, -0.28, -0.18, 0.9],
-      strong: [-0.36, -0.42, -0.24, 0.8],
+      mild: [-0.38, -0.58, 0, 0.93],
+      medium: [-0.5, -0.8, 0, 0.92],
+      strong: [-0.62, -1, 0, 0.82],
     } satisfies IntensityMap,
     punch: {
       mild: [-0.25, -0.18, -0.08, 0.95],
@@ -148,23 +152,49 @@ export const RigCalibration = {
       strong: [-0.48, -0.45, -0.15, 0.74],
     } satisfies IntensityMap,
     waveUp: {
-      mild: [-0.28, -0.16, -0.12, 0.94],
-      medium: [-0.42, -0.26, -0.2, 0.84],
-      strong: [-0.55, -0.34, -0.28, 0.7],
+      mild: [-0.28, -0.16, 1, 0.94],
+      medium: [-0.8, -0.26, 1, 0.84],
+      strong: [-0.55, -0.34, 1, 0.7],
     } satisfies IntensityMap,
   },
 
   elbow: {
+    guard: {
+      right: {
+        mild: [-0.52, 0.7, 0, 0.83],
+        medium: [-0.68, 1, 0, 0.733],
+        strong: [-0.82, 1.18, 0, 0.62],
+      },
+      left: {
+        mild: [-0.52, 0, 0, 0.83],
+        medium: [-0.68, 0, 0, 0.733],
+        strong: [-0.82, 0, 0, 0.62],
+      },
+    } satisfies SideIntensityMap,
     bend: {
-      mild: [-0.18, 0, 0, 0.98],
-      medium: [-0.3, 0, 0, 0.95],
-      strong: [-0.5, 0, 0, 0.866],
-    } satisfies IntensityMap,
+      right: {
+        mild: [-0.18, 0, 0, 0.98],
+        medium: [-0.3, 0, 0, 0.95],
+        strong: [-0.5, 0, 0, 0.866],
+      },
+      left: {
+        mild: [-0.18, 0, 0, 0.98],
+        medium: [-0.3, 0, 0, 0.95],
+        strong: [-0.5, 0, 0, 0.866],
+      },
+    } satisfies SideIntensityMap,
     nearlyStraight: {
-      mild: [-0.08, 0, 0, 0.9968],
-      medium: [-0.12, 0, 0, 0.9928],
-      strong: [-0.16, 0, 0, 0.987],
-    } satisfies IntensityMap,
+      right: {
+        mild: [-0.08, 0, 0, 0.9968],
+        medium: [-0.12, 0, 0, 0.9928],
+        strong: [-0.16, 0, 0, 0.987],
+      },
+      left: {
+        mild: [-0.08, 0, 0, 0.9968],
+        medium: [-0.12, 0, 0, 0.9928],
+        strong: [-0.16, 0, 0, 0.987],
+      },
+    } satisfies SideIntensityMap,
   },
 
   wrist: {

@@ -93,7 +93,7 @@ Rules:
 - Use finger_control when the user asks for one finger, a specific finger joint, pointing, counting, spreading fingers, thumb-only movement, or detailed hand posing.
 - finger_control supports extra fields: side ("right", "left", "both"), finger ("thumb", "index", "middle", "ring", "pinky", "all"), curl 0..1, spread -1..1, twist -1..1, and joints.
 - joints can be an array [base, middle, tip] or an object {"base": number, "middle": number, "tip": number}; each value is 0 open to 1 closed.
-- For pointing, close all fingers first with finger_control finger "all" curl 1, then open the index finger with finger_control finger "index" curl 0.
+- For pointing, include the matching arm action first with intensity "strong": use right_arm_forward for right pointing, left_arm_forward for left pointing, or reach_forward/two_arms_forward for both hands. Then close all fingers with finger_control finger "all" curl 1, and open the index finger with finger_control finger "index" curl 0.
 - If the user asks for a fighting, guard, combat, ready, or defensive pose, use fighting_stance or guard.
 - If the user asks for crouch, squat, low stance, or bend down, use crouch.
 - If the user asks for knee bend, use bend_knees.
@@ -181,6 +181,10 @@ Output:
   "duration": 2,
   "loop": false,
   "actions": [
+    {
+      "type": "right_arm_forward",
+      "intensity": "strong"
+    },
     {
       "type": "finger_control",
       "side": "right",

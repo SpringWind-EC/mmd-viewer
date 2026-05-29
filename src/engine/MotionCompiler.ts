@@ -8,7 +8,7 @@ import {
   type BoneMap,
   type MotionPrimitive,
   type PositionMap,
-} from "./MotionPrimitives";
+} from "./primitives";
 
 type Keyframe = {
   time: number;
