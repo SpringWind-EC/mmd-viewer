@@ -18,6 +18,8 @@ import {
   peaceSignPose,
   posePrimitive,
   q,
+  leftReachForwardPrimitive,
+  rightHandFrontChestPrimitive,
   rightReachForwardPrimitive,
   type BoneMap,
   type MotionPrimitive,
@@ -366,6 +368,23 @@ export function compileMotionOperator(
       if (operator.effector === "right_hand" && operator.region === "forward") {
         return {
           primitive: rightReachForwardPrimitive(operator.intensity ?? "medium"),
+          priority: 20,
+        };
+      }
+
+      if (
+        operator.effector === "right_hand" &&
+        (operator.region === "front_of_chest" || operator.region === "chest_center")
+      ) {
+        return {
+          primitive: rightHandFrontChestPrimitive(operator.intensity ?? "medium"),
+          priority: 20,
+        };
+      }
+
+      if (operator.effector === "left_hand" && operator.region === "forward") {
+        return {
+          primitive: leftReachForwardPrimitive(operator.intensity ?? "medium"),
           priority: 20,
         };
       }

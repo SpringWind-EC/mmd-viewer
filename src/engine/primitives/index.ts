@@ -40,8 +40,10 @@ export {
   headPose,
   leftArmForward,
   leftArmForwardPose,
+  leftReachForwardPrimitive,
   rightArmForward,
   rightArmForwardPose,
+  rightHandFrontChestPrimitive,
   rightReachForwardPrimitive,
   twoArmsForward,
 } from "./upperBody";
