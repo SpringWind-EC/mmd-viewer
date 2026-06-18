@@ -37,9 +37,11 @@ export { bothHandsPose, bothPeaceSignsPose, fingerControlPose, handPose, peaceSi
 export {
   bodyLeanBackward,
   bodyLeanForward,
+  bothHandsGuardFrontChestPrimitive,
   headPose,
   leftArmForward,
   leftArmForwardPose,
+  leftHandFrontChestPrimitive,
   leftReachForwardPrimitive,
   rightArmForward,
   rightArmForwardPose,

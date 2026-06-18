@@ -5,6 +5,7 @@ import {
   axisQuat,
   bodyLeanBackward,
   bodyLeanForward,
+  bothHandsGuardFrontChestPrimitive,
   type ContactHoldSide,
   crouchPrimitive,
   fingerControlPose,
@@ -18,6 +19,7 @@ import {
   peaceSignPose,
   posePrimitive,
   q,
+  leftHandFrontChestPrimitive,
   leftReachForwardPrimitive,
   rightHandFrontChestPrimitive,
   rightReachForwardPrimitive,
@@ -34,6 +36,9 @@ export type CompiledOperator = {
 export type MotionOperatorContext = {
   crouchIntensity?: Intensity;
   crouchContactHoldSide?: ContactHoldSide;
+  guardFrontChestRoleForOperator?: (
+    operator: MotionOperator & { type: "move_effector" }
+  ) => "driver" | "suppressed" | undefined;
   handKneeModeForOperator?: (
     operator: MotionOperator & { type: "move_effector" }
   ) => HandKneeMode;
@@ -351,6 +356,25 @@ export function compileMotionOperator(
 ): CompiledOperator {
   switch (operator.type) {
     case "move_effector": {
+      const guardFrontChestRole =
+        context.guardFrontChestRoleForOperator?.(operator);
+
+      if (guardFrontChestRole === "driver") {
+        return {
+          primitive: bothHandsGuardFrontChestPrimitive(
+            operator.intensity ?? "medium"
+          ),
+          priority: 20,
+        };
+      }
+
+      if (guardFrontChestRole === "suppressed") {
+        return {
+          primitive: posePrimitive({}),
+          priority: 20,
+        };
+      }
+
       const handKnee = handKneeSide(operator);
 
       if (handKnee) {
@@ -385,6 +409,16 @@ export function compileMotionOperator(
       if (operator.effector === "left_hand" && operator.region === "forward") {
         return {
           primitive: leftReachForwardPrimitive(operator.intensity ?? "medium"),
+          priority: 20,
+        };
+      }
+
+      if (
+        operator.effector === "left_hand" &&
+        (operator.region === "front_of_chest" || operator.region === "chest_center")
+      ) {
+        return {
+          primitive: leftHandFrontChestPrimitive(operator.intensity ?? "medium"),
           priority: 20,
         };
       }
