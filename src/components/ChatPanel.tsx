@@ -2,8 +2,7 @@ import { useState } from "react";
 import { compileMotionPlan } from "../engine/MotionCompiler";
 import { isRawVmdJson, rawVmdJsonToMotion } from "../engine/RawVmdMotion";
 import { generateMotion } from "../services/generateMotion";
-import { generateMotionPlan } from "../services/generateMotionPlan";
-import type { PlanData } from "../services/api";
+import { generatePlan, type PlanData } from "../services/api";
 import PlanLibrary from "./PlanLibrary";
 import "./motionPanel.css";
 
@@ -56,7 +55,7 @@ export default function ChatPanel({
     setError(null);
 
     try {
-      const plan = await generateMotionPlan(prompt);
+      const plan = await generatePlan(prompt);
       const motion = compileMotionPlan(plan);
 
       console.log("AI MOTION PLAN:", plan);

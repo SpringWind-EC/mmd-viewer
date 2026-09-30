@@ -5,7 +5,7 @@ import rateLimit from "@fastify/rate-limit";
 import { z } from "zod";
 import { generateWithGemini } from "./generation.js";
 import { hashPassword, verifyPassword } from "./password.js";
-import { planInputSchema } from "./plan-schema.js";
+import { generatedProgramSchema, planInputSchema } from "./plan-schema.js";
 import type { Store, User } from "./types.js";
 
 const credentialsSchema = z.object({
@@ -129,7 +129,21 @@ export async function buildApp(
         return reply.code(503).send({ error: "Gemini is not configured on the server." });
       }
       try {
-        return { text: await generate(kind, parsed.data.prompt) };
+        const text = await generate(kind, parsed.data.prompt);
+        if (kind === "motion") return { text };
+
+        let output: unknown;
+        try {
+          output = JSON.parse(text);
+        } catch {
+          return reply.code(502).send({ error: "AI returned an invalid motion plan. Please try again." });
+        }
+        const program = generatedProgramSchema.safeParse(output);
+        if (!program.success) {
+          request.log.warn({ issues: program.error.issues }, "AI returned an invalid motion plan");
+          return reply.code(502).send({ error: "AI returned an invalid motion plan. Please try again." });
+        }
+        return { plan: program.data };
       } catch (error) {
         request.log.error(error);
         return reply.code(502).send({ error: "Motion generation failed." });

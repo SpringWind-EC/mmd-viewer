@@ -61,6 +61,43 @@ export const planSchema = z.union([
   z.object({ ...common, actions: z.array(action).min(1).max(100) }),
 ]);
 
+export const generatedProgramSchema = z.object({
+  ...common,
+  operators: z.array(operator).min(1).max(6),
+}).superRefine((program, context) => {
+  program.operators.forEach((item, index) => {
+    const start = item.startTime ?? 0;
+    const end = item.endTime ?? program.duration;
+    if (start >= end || end > program.duration) {
+      context.addIssue({
+        code: "custom",
+        path: ["operators", index],
+        message: "Operator timing must satisfy 0 <= startTime < endTime <= duration.",
+      });
+    }
+
+    if (item.type === "move_effector") {
+      const hand = item.effector === "right_hand" || item.effector === "left_hand";
+      const knee = item.region === "right_knee" || item.region === "left_knee" || item.region === "knees";
+      const matchingKnee = item.region === "knees" ||
+        (item.effector === "right_hand" && item.region === "right_knee") ||
+        (item.effector === "left_hand" && item.region === "left_knee");
+      const supportedHandRegion = item.region !== "waist" && (!knee || matchingKnee);
+      if (!(hand && supportedHandRegion) && !(item.effector === "torso" && item.region === "forward")) {
+        context.addIssue({ code: "custom", path: ["operators", index], message: "Unsupported effector and region combination." });
+      }
+    }
+
+    if (item.type === "orient_effector" && !["head", "gaze", "right_hand", "left_hand"].includes(item.effector)) {
+      context.addIssue({ code: "custom", path: ["operators", index], message: "Unsupported orientation effector." });
+    }
+
+    if (item.type === "oscillate" && !["head", "gaze", "torso", "right_hand", "left_hand"].includes(item.effector)) {
+      context.addIssue({ code: "custom", path: ["operators", index], message: "Unsupported oscillation effector." });
+    }
+  });
+});
+
 export const planInputSchema = z.object({
   title: z.string().trim().min(1).max(120),
   plan: planSchema,

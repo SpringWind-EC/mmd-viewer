@@ -103,12 +103,13 @@ Rules:
 - For repeated motion, set loop true only when the whole motion should repeat.
 - Use startTime and endTime only when operators should happen in sequence.
 - If timing is not important, omit startTime and endTime.
-- Use move_effector to place hands, head, torso, hips, or feet near body regions.
+- Use move_effector for hands or torso only. Torso supports forward only.
+- Hands support forward, front_of_face, front_of_chest, chest_center, above_head, and either side_of_head region. For knees, use right_hand to right_knee, left_hand to left_knee, or either hand to knees. Do not target waist or the opposite knee.
 - Use hand_shape for fist, open hand, relaxed hand, or peace sign.
 - Use finger for detailed finger curling, pointing, counting, spreading, or thumb-only motion.
 - Use look for head/gaze direction.
-- Use orient_effector when a hand, head, gaze, or torso should face a direction.
-- Use oscillate for waving, shaking, nodding, swaying, trembling, or repeated side-to-side/up-down/twist motion.
+- Use orient_effector only for a hand, head, or gaze facing a direction.
+- Use oscillate only for hands, head, gaze, or torso when waving, shaking, nodding, swaying, trembling, or repeating side-to-side/up-down/twist motion.
 - Use shift_weight for leaning, crouching, stepping weight, bracing, or lowering the body.
 - For a wave, move the hand to the side of the head, open the hand, then oscillate that hand horizontally.
 - For greeting, add look target viewer and a mild forward weight shift if appropriate.

@@ -8,7 +8,8 @@ import { openSqliteStore } from "../src/sqlite-store.js";
 
 test("accounts own their plans and sessions expire on logout", async () => {
   const store = openSqliteStore(":memory:");
-  const app = await buildApp(store, async () => '{"duration":2,"actions":[{"type":"neutral"}]}');
+  const generatedPlan = { duration: 2, operators: [{ type: "look", target: "viewer" }] };
+  const app = await buildApp(store, async () => JSON.stringify(generatedPlan));
   try {
     async function register(email: string) {
       const response = await app.inject({ method: "POST", url: "/api/auth/register", payload: { email, password: "strong-password-123" } });
@@ -44,12 +45,47 @@ test("accounts own their plans and sessions expire on logout", async () => {
 
     const generated = await app.inject({ method: "POST", url: "/api/generate/plan", headers: { cookie: alice }, payload: { prompt: "wave" } });
     assert.equal(generated.statusCode, 200);
-    assert.match(generated.json().text, /neutral/);
+    assert.deepEqual(generated.json(), { plan: generatedPlan });
+
+    const rawMotion = await app.inject({ method: "POST", url: "/api/generate/motion", headers: { cookie: alice }, payload: { prompt: "wave" } });
+    assert.equal(rawMotion.statusCode, 200);
+    assert.equal(rawMotion.json().text, JSON.stringify(generatedPlan));
 
     const logout = await app.inject({ method: "POST", url: "/api/auth/logout", headers: { cookie: alice } });
     assert.equal(logout.statusCode, 200);
     const afterLogout = await app.inject({ method: "GET", url: "/api/plans", headers: { cookie: alice } });
     assert.equal(afterLogout.statusCode, 401);
+  } finally {
+    await app.close();
+    store.close();
+  }
+});
+
+test("invalid generated plans are rejected instead of replaced with a fallback motion", async () => {
+  const store = openSqliteStore(":memory:");
+  const outputs: Record<string, string> = {
+    malformed: "Here is your plan: {}",
+    empty: JSON.stringify({ duration: 2, operators: [] }),
+    unknown: JSON.stringify({ duration: 2, operators: [{ type: "teleport" }] }),
+    timing: JSON.stringify({ duration: 2, operators: [{ type: "look", target: "viewer", startTime: 2 }] }),
+    unsupported: JSON.stringify({ duration: 2, operators: [{ type: "oscillate", effector: "right_foot", axis: "horizontal" }] }),
+  };
+  const app = await buildApp(store, async (_kind, prompt) => outputs[prompt]);
+  try {
+    const register = await app.inject({
+      method: "POST", url: "/api/auth/register",
+      payload: { email: "generator@example.com", password: "strong-password-123" },
+    });
+    const cookie = (register.headers["set-cookie"] as string).split(";")[0];
+
+    for (const prompt of Object.keys(outputs)) {
+      const response = await app.inject({
+        method: "POST", url: "/api/generate/plan", headers: { cookie }, payload: { prompt },
+      });
+      assert.equal(response.statusCode, 502, prompt);
+      assert.match(response.json().error, /invalid motion plan/i);
+      assert.equal(response.json().plan, undefined);
+    }
   } finally {
     await app.close();
     store.close();

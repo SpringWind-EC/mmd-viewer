@@ -47,9 +47,16 @@ export const planApi = {
   delete: (id: string) => api<void>(`/plans/${id}`, { method: "DELETE" }),
 };
 
-export async function generateText(kind: "motion" | "plan", prompt: string): Promise<string> {
+export async function generateText(kind: "motion", prompt: string): Promise<string> {
   const response = await api<{ text: string }>(`/generate/${kind}`, {
     method: "POST", body: JSON.stringify({ prompt }),
   });
   return response.text;
+}
+
+export async function generatePlan(prompt: string): Promise<MotionProgram> {
+  const response = await api<{ plan: MotionProgram }>("/generate/plan", {
+    method: "POST", body: JSON.stringify({ prompt }),
+  });
+  return response.plan;
 }
