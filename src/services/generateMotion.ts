@@ -1,39 +1,11 @@
-import { geminiModel } from "./gemini";
+import { generateText } from "./api";
 import * as THREE from "three";
 
 export async function generateMotion(
   prompt: string
 ) {
 
-  // =========================================
-  // LOAD VALID BONES
-  // =========================================
-
-  const boneResponse = await fetch("/ControlBones.txt");
-
-  const boneText  = await boneResponse.text();
-
-  // =========================================
-  // GENERATE
-  // =========================================
-
-  const promptResponse =await fetch("/MotionPrompt.txt");
-
-  let systemPrompt = await promptResponse.text();
-
-  systemPrompt = systemPrompt.replaceAll("${boneText}", boneText).replaceAll("${prompt}", prompt);
-
-  const result = await geminiModel.generateContent(systemPrompt);
-
-  // =========================================
-  // RESPONSE
-  // =========================================
-
-  const response =
-    await result.response;
-
-  const text =
-    response.text();
+  const text = await generateText("motion", prompt);
 
   console.log(
     "RAW GEMINI RESPONSE:",

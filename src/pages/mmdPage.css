@@ -1,0 +1,46 @@
+.mmd-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  width: 100vw;
+  height: 100dvh;
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.mmd-controls {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  z-index: 50;
+  pointer-events: auto;
+}
+
+.mmd-export {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 50;
+  pointer-events: auto;
+}
+
+.mmd-export button {
+  min-height: 42px;
+  padding: 10px 17px;
+  border: 1px solid #a6d3df;
+  border-radius: 6px;
+  background: #e7f7fb;
+  color: #21617b;
+  box-shadow: 0 6px 20px rgba(8, 30, 34, .23);
+  font: 600 14px/1.3 system-ui, 'Segoe UI', sans-serif;
+  cursor: pointer;
+}
+
+.mmd-export button:hover:not(:disabled) { background: #cbebf3; }
+.mmd-export button:focus-visible { outline: 3px solid #55c8ad; outline-offset: 3px; }
+.mmd-export button:disabled { opacity: .62; cursor: not-allowed; }
+
+@media (max-width: 600px) {
+  .mmd-controls { top: 12px; left: 12px; }
+  .mmd-export { right: 12px; bottom: 12px; }
+}

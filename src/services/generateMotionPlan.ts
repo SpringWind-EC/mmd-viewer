@@ -1,4 +1,4 @@
-import { geminiModel } from "./gemini";
+import { generateText } from "./api";
 import type { MotionAction, MotionActionType, MotionPlan } from "../engine/MotionPlan";
 import type {
   BodyEffector,
@@ -363,23 +363,7 @@ function normalizeOperator(
 export async function generateMotionPlan(
   prompt: string
 ): Promise<MotionPlan | MotionProgram> {
-  const promptResponse =
-    await fetch("/MotionPlanPrompt.txt");
-
-  let systemPrompt =
-    await promptResponse.text();
-
-  systemPrompt =
-    systemPrompt.replaceAll("${prompt}", prompt);
-
-  const result =
-    await geminiModel.generateContent(systemPrompt);
-
-  const response =
-    await result.response;
-
-  const text =
-    response.text();
+  const text = await generateText("plan", prompt);
 
   console.log("RAW MOTION PLAN RESPONSE:", text);
 

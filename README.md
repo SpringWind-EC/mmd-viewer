@@ -1,73 +1,50 @@
 # mmd-viewer
 
-IMPORTANT: This project is in development.
+AI-assisted MMD motion generation with a React viewer and a Fastify API. Accounts can save, load, update, and delete private motion plans.
 
-## Description
+## Requirements
 
-An AI MMD motion generation website aimed at automatically generating motions from user input, reducing the workload of motion tracing or keyframing.
-
-The app uses Gemini 2.5 Flash for motion generation and Three.js for rendering MMD/PMX models in the browser.
-
-## Prerequisites
-
-- Node.js 20 or newer
+- Node.js 22 or newer (the server uses the built-in SQLite module)
 - npm
-- A Gemini API key
+- A Gemini API key for AI generation
 
-## Install Dependencies
-
-From the project root, install the required libraries:
+## Setup
 
 ```bash
 npm install
 ```
 
-This installs the React, Vite, Three.js, MMD, AI, and TypeScript dependencies listed in `package.json`.
+Create a `.env` file in the project root based on `.env.example`:
 
-## Environment Variables
-
-Create a `.env` file in the project root:
-
-```bash
-VITE_GEMINI_API_KEY=your_gemini_api_key_here
+```text
+PORT=3001
+DATABASE_FILE=./data/mmd-viewer.sqlite
+GEMINI_API_KEY=your_key_here
 ```
 
-Optional, only if OpenAI-backed features are used:
+The database file and tables are created automatically on the first server start. SQLite files and `.env` are ignored by Git. Existing `VITE_GEMINI_API_KEY` and `VITE_OPENAI_API_KEY` variables should be removed; browser code no longer uses them.
+
+Start the API and frontend in separate terminals:
 
 ```bash
-VITE_OPENAI_API_KEY=your_openai_api_key_here
-```
-
-## Run the Development Server
-
-```bash
+npm run dev:server
 npm run dev
 ```
 
-Then open the local URL shown in the terminal, usually:
+Open `http://localhost:5173/MMD`. Vite forwards `/api` requests to Fastify on port 3001. Create an account in **My plans**, generate or paste a motion plan, then save it. Saved plans belong to that account. AI generation requires sign-in. Direct keyframe motions and raw VMD JSON can be played but are not stored in the plan library.
 
-```text
-http://localhost:5173
-```
+## API
 
-The MMD viewer page is available at:
+- `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`
+- `GET /api/plans`, `GET /api/plans/:id`, `POST /api/plans`, `PUT /api/plans/:id`, `DELETE /api/plans/:id`
+- `POST /api/generate/motion`, `POST /api/generate/plan`
 
-```text
-http://localhost:5173/MMD
-```
+Authentication uses an HTTP-only session cookie. Passwords are salted and hashed with scrypt. Plan writes are validated, and every plan query is scoped to its owner. The `Store` interface in `server/src/types.ts` is the boundary for adding a PostgreSQL implementation later; the HTTP API need not change.
 
-## Build
-
-To type-check and build the project:
+## Checks
 
 ```bash
+npm run check:server
+npm run test:server
 npm run build
-```
-
-## Preview Production Build
-
-After building:
-
-```bash
-npm run preview
 ```

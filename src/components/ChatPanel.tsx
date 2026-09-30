@@ -3,6 +3,9 @@ import { compileMotionPlan } from "../engine/MotionCompiler";
 import { isRawVmdJson, rawVmdJsonToMotion } from "../engine/RawVmdMotion";
 import { generateMotion } from "../services/generateMotion";
 import { generateMotionPlan } from "../services/generateMotionPlan";
+import type { PlanData } from "../services/api";
+import PlanLibrary from "./PlanLibrary";
+import "./motionPanel.css";
 
 interface Props {
   onMotionGenerated: (motion: any) => void;
@@ -18,6 +21,9 @@ export default function ChatPanel({
 
   const [prompt, setPrompt] = useState("");
   const [jsonInput, setJsonInput] = useState("");
+  const [currentPlan, setCurrentPlan] = useState<PlanData | null>(null);
+  const [planTitle, setPlanTitle] = useState("");
+  const [planRevision, setPlanRevision] = useState(0);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,10 +41,11 @@ export default function ChatPanel({
       console.log("AI MOTION RESPONSE:", motion);
 
       onMotionGenerated(motion);
+      setCurrentPlan(null);
 
     } catch (err: any) {
       console.error(err);
-      setError("AI generation failed");
+      setError((err as Error).message || "AI generation failed");
     }
 
     setLoading(false);
@@ -56,9 +63,12 @@ export default function ChatPanel({
       console.log("COMPILED MOTION:", motion);
 
       onMotionGenerated(motion);
+      setCurrentPlan(plan);
+      setPlanTitle(prompt.trim().slice(0, 120) || "Untitled plan");
+      setPlanRevision((revision) => revision + 1);
     } catch (err: any) {
       console.error(err);
-      setError("Motion plan generation failed");
+      setError((err as Error).message || "Motion plan generation failed");
     }
 
     setLoading(false);
@@ -80,6 +90,7 @@ export default function ChatPanel({
         console.log("COMPILED RAW VMD MOTION:", motion);
 
         onMotionGenerated(motion);
+        setCurrentPlan(null);
         return;
       }
 
@@ -103,6 +114,9 @@ export default function ChatPanel({
         console.log("COMPILED MANUAL MOTION:", motion);
 
         onMotionGenerated(motion);
+        setCurrentPlan(parsed);
+        setPlanTitle("Manual plan");
+        setPlanRevision((revision) => revision + 1);
         return;
       }
 
@@ -117,6 +131,7 @@ export default function ChatPanel({
       }
       
       onMotionGenerated(parsed);
+      setCurrentPlan(null);
 
     } catch (err) {
       console.error(err);
@@ -125,152 +140,97 @@ export default function ChatPanel({
   }
 
   return (
-    <div
-      style={{
-        position: "relative",
-        zIndex: 100,
-        background: "rgba(0,0,0,0.85)",
-        padding: 16,
-        borderRadius: 12,
-        width: 350,
-        color: "white",
-      }}
-    >
+    <section className="motion-panel" aria-label="Motion controls">
+      <header className="motion-panel-header">
+        <span className="motion-panel-mark" aria-hidden="true" />
+        <h1>Motion Studio</h1>
+      </header>
 
-      {/* =========================
-          MODE SWITCH
-      ========================= */}
-      <div style={{ marginBottom: 10 }}>
+      <div className="motion-mode-switch" role="group" aria-label="Motion input mode">
         <button
           type="button"
           onClick={() => setMode("ai")}
-          style={{
-            marginRight: 8,
-            padding: 6,
-            background: mode === "ai" ? "#444" : "#222",
-            color: "white",
-            cursor: "pointer",
-          }}
+          className={mode === "ai" ? "is-active" : ""}
+          aria-pressed={mode === "ai"}
         >
-          AI Mode
+          AI
         </button>
-
         <button
           type="button"
           onClick={() => setMode("manual")}
-          style={{
-            padding: 6,
-            background: mode === "manual" ? "#444" : "#222",
-            color: "white",
-            cursor: "pointer",
-          }}
+          className={mode === "manual" ? "is-active" : ""}
+          aria-pressed={mode === "manual"}
         >
           Manual JSON
         </button>
       </div>
 
-      {/* =========================
-          ERROR DISPLAY
-      ========================= */}
       {error && (
-        <div style={{ color: "red", marginBottom: 10 }}>
+        <div className="motion-panel-error" role="alert">
           {error}
         </div>
       )}
 
-      {/* =========================
-          AI MODE UI
-      ========================= */}
       {mode === "ai" && (
-        <>
+        <div className="motion-panel-form">
+          <label htmlFor="motion-prompt">Describe a motion</label>
           <textarea
+            id="motion-prompt"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Describe motion..."
-            rows={6}
-            style={{
-              width: "95%",
-              padding: 10,
-              marginBottom: 10,
-              background: "#111",
-              color: "white",
-              border: "1px solid #444",
-              borderRadius: 8,
-              fontFamily: "monospace",
-            }}
+            placeholder="A slow wave, then a small bow..."
+            rows={4}
           />
-
           <button
             type="button"
             onClick={handleGenerate}
-            disabled={loading}
-            style={{
-              width: "100%",
-              padding: 10,
-              cursor: loading ? "not-allowed" : "pointer",
-            }}
+            disabled={loading || !prompt.trim()}
+            className="motion-action motion-action-primary"
           >
             {loading ? "Generating..." : "Generate Motion"}
           </button>
-
           <button
             type="button"
             onClick={handleGenerateMotionPlan}
-            disabled={loading}
-            style={{
-              width: "100%",
-              padding: 10,
-              marginTop: 8,
-              background: "#333",
-              color: "white",
-              cursor: loading ? "not-allowed" : "pointer",
-            }}
+            disabled={loading || !prompt.trim()}
+            className="motion-action motion-action-secondary"
           >
             Generate Motion Plan
           </button>
-        </>
+        </div>
       )}
 
-      {/* =========================
-          MANUAL JSON MODE UI
-      ========================= */}
       {mode === "manual" && (
-        <>
+        <div className="motion-panel-form">
+          <label htmlFor="motion-json">Motion JSON</label>
           <textarea
+            id="motion-json"
             value={jsonInput}
             onChange={(e) => setJsonInput(e.target.value)}
-            placeholder="Paste motion JSON, motion plan JSON, or raw VMD JSON here"
-            rows={10}
-            style={{
-              width: "95%",
-              padding: 10,
-              marginBottom: 10,
-              background: "#111",
-              color: "#0f0",
-              border: "1px solid #444",
-              borderRadius: 8,
-              fontFamily: "monospace",
-              fontSize: 12,
-              whiteSpace: "pre",
-            }}
+            placeholder="Paste motion JSON here"
+            rows={8}
+            className="motion-json-input"
           />
-
           <button
             type="button"
             onClick={handleManualSubmit}
-            style={{
-              width: "100%",
-              padding: 10,
-              background: "#333",
-              color: "white",
-              cursor: "pointer",
-            }}
+            className="motion-action motion-action-secondary"
           >
             Apply JSON Motion
           </button>
-        </>
+        </div>
       )}
 
-    </div>
+      <PlanLibrary
+        currentPlan={currentPlan}
+        suggestedTitle={planTitle}
+        revision={planRevision}
+        onLoad={(plan) => {
+          setCurrentPlan(plan);
+          onMotionGenerated(compileMotionPlan(plan));
+        }}
+      />
+
+    </section>
   );
 }

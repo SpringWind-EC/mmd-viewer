@@ -8,6 +8,7 @@ import { CCDIKSolver } from "three/examples/jsm/animation/CCDIKSolver.js";
 import { MotionPlayer } from "../engine/MotionPlayer";
 import ChatPanel from "../components/ChatPanel";
 import { VMDExporter } from "../engine/VMDExporter";
+import "./mmdPage.css";
 
 export default function MMDPage() {
   const playerRef = useRef<any>(null);
@@ -37,7 +38,7 @@ export default function MMDPage() {
     // =========================
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x111111);
+    scene.background = new THREE.Color(0x18282b);
 
     // =========================
     // Camera
@@ -110,7 +111,7 @@ export default function MMDPage() {
     const ambient = new THREE.AmbientLight(0xffffff, 0.45);
     scene.add(ambient);
 
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
+    const hemiLight = new THREE.HemisphereLight(0xf2fdff, 0x4b6556, 1.2);
     scene.add(hemiLight);
 
     //Do not cast shadow 
@@ -125,7 +126,7 @@ export default function MMDPage() {
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(200, 200),
       new THREE.MeshStandardMaterial({
-        color: 0x222222,
+        color: 0x243936,
       })
     );
 
@@ -424,65 +425,21 @@ export default function MMDPage() {
   return (
     <>
       {/* Three.js Canvas */}
-      <div
-        ref={mountRef}
-        style={{
-          width: "100vw",
-          height: "100vh",
-          overflow: "hidden",
-          position: "fixed",
-          inset: 0,
-          zIndex: 1,
-          pointerEvents: "auto",
-        }}
-      />
+      <div ref={mountRef} className="mmd-stage" />
 
       {/* Chat UI Overlay */}
-      <div
-        style={{
-          position: "fixed",
-          top: 20,
-          left: 20,
-          zIndex: 50,
-          pointerEvents: "auto",
-        }}
-      >
+      <div className="mmd-controls">
         <ChatPanel onMotionGenerated={setMotionData} />
       </div>
 
       {/* Buttons Overlay */}
-      <div
-        style={{
-          position: "fixed",
-          right: 20,
-          bottom: 20,
-          zIndex: 50,
-          pointerEvents: "auto",
-        }}
-      >
+      <div className="mmd-export">
         <button
           onClick={downloadVMD}
-          style={{
-            padding: "10px 20px",
-            cursor: "pointer",
-          }}
+          disabled={!motionData}
         >
           Download VMD
         </button>
-
-        {/*
-        <button
-          onClick={testSemanticMotion}
-          style={{
-            marginTop: 10,
-            padding: "10px 20px",
-            cursor: "pointer",
-            display: "block",
-          }}
-        >
-          Test Semantic Motion
-        </button>
-        */}
       </div>
 
     </>
