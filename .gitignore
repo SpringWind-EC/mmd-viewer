@@ -16,6 +16,15 @@ dist-ssr
 *.sqlite-shm
 *.sqlite-wal
 
+# Test and local QA files (not needed to run the web app)
+/test/
+/server/test/
+/coverage/
+/test-results/
+/playwright-report/
+/.npm-cache/
+/.chrome-pose-test*/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

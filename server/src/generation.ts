@@ -24,8 +24,14 @@ export const motionProgramResponseSchema: ResponseSchema = {
       items: {
         type: SchemaType.OBJECT,
         properties: {
-          type: choice(["move_effector", "orient_effector", "hand_shape", "finger", "look", "oscillate", "shift_weight"]),
+          type: choice(["reach", "move_effector", "orient_effector", "hand_shape", "finger", "look", "oscillate", "shift_weight"]),
           effector: choice(["head", "gaze", "torso", "right_hand", "left_hand"]),
+          anchor: choice(["head", "chest", "hips"]),
+          offset: {
+            type: SchemaType.OBJECT,
+            properties: { right: number, up: number, forward: number },
+            required: ["right", "up", "forward"],
+          },
           region: choice(["forward", "front_of_face", "front_of_chest", "chest_center", "above_head", "right_side_of_head", "left_side_of_head", "right_knee", "left_knee", "knees"]),
           intensity: choice(["mild", "medium", "strong"]),
           facing: choice(["viewer", "forward", "left", "right", "up", "down"]),

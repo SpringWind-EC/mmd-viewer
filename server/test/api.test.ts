@@ -114,3 +114,49 @@ test("operator plans survive reopening the database", () => {
     rmdirSync(directory);
   }
 });
+
+test("generated reach plans can be saved and invalid reach targets are rejected", async () => {
+  const store = openSqliteStore(":memory:");
+  const plan = {
+    duration: 2.5,
+    operators: [{
+      type: "reach",
+      effector: "right_hand",
+      anchor: "head",
+      offset: { right: 0.18, up: -0.08, forward: 0.18 },
+    }],
+  };
+  const app = await buildApp(store, async () => JSON.stringify(plan));
+  try {
+    const register = await app.inject({
+      method: "POST", url: "/api/auth/register",
+      payload: { email: "reach@example.com", password: "strong-password-123" },
+    });
+    const cookie = (register.headers["set-cookie"] as string).split(";")[0];
+    const headers = { cookie };
+    const generated = await app.inject({ method: "POST", url: "/api/generate/plan", headers, payload: { prompt: "right hand near face" } });
+    assert.equal(generated.statusCode, 200);
+    assert.deepEqual(generated.json().plan, plan);
+
+    const saved = await app.inject({ method: "POST", url: "/api/plans", headers, payload: { title: "Near face", plan } });
+    assert.equal(saved.statusCode, 201);
+    const loaded = await app.inject({ method: "GET", url: `/api/plans/${saved.json().plan.id}`, headers });
+    assert.deepEqual(loaded.json().plan.plan, plan);
+
+    const invalid = {
+      ...plan,
+      operators: [{ ...plan.operators[0], offset: { right: 3, up: 0, forward: 0 } }],
+    };
+    const rejected = await app.inject({ method: "POST", url: "/api/plans", headers, payload: { title: "Bad reach", plan: invalid } });
+    assert.equal(rejected.statusCode, 400);
+    const crossing = {
+      ...plan,
+      operators: [{ ...plan.operators[0], offset: { right: -0.2, up: 0, forward: -0.2 } }],
+    };
+    const crossingResponse = await app.inject({ method: "POST", url: "/api/plans", headers, payload: { title: "Crossing reach", plan: crossing } });
+    assert.equal(crossingResponse.statusCode, 400);
+  } finally {
+    await app.close();
+    store.close();
+  }
+});

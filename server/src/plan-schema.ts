@@ -40,7 +40,30 @@ const region = z.enum([
   "right_side_of_head", "left_side_of_head", "right_knee", "left_knee", "knees",
 ]);
 
+function safeReachTarget(item: {
+  effector: "right_hand" | "left_hand";
+  anchor: "head" | "chest" | "hips";
+  offset: { right: number; up: number; forward: number };
+}) {
+  const side = item.effector === "right_hand" ? 1 : -1;
+  return side * item.offset.right >= 0.08 &&
+    item.offset.forward >= (item.anchor === "head" ? 0.12 : 0.22) &&
+    (item.anchor !== "head" ||
+      Math.hypot(item.offset.right, item.offset.up, item.offset.forward) >= 0.23);
+}
+
 const operator = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("reach"),
+    effector: z.enum(["right_hand", "left_hand"]),
+    anchor: z.enum(["head", "chest", "hips"]),
+    offset: z.object({
+      right: z.number().finite().min(-1).max(1),
+      up: z.number().finite().min(-1).max(1),
+      forward: z.number().finite().min(-1).max(1),
+    }),
+    ...timing,
+  }),
   z.object({ type: z.literal("move_effector"), effector, region, intensity: intensity.optional(), ...timing }),
   z.object({ type: z.literal("orient_effector"), effector, facing, intensity: intensity.optional(), ...timing }),
   z.object({ type: z.literal("hand_shape"), side, shape: z.enum(["relaxed", "open", "guard", "fist", "peace"]), ...timing }),
@@ -59,13 +82,23 @@ const common = {
 export const planSchema = z.union([
   z.object({ ...common, operators: z.array(operator).min(1).max(100) }),
   z.object({ ...common, actions: z.array(action).min(1).max(100) }),
-]);
+]).superRefine((plan, context) => {
+  if (!("operators" in plan)) return;
+  plan.operators.forEach((item, index) => {
+    if (item.type === "reach" && !safeReachTarget(item)) {
+      context.addIssue({ code: "custom", path: ["operators", index], message: "Reach target must stay in front of the same-side shoulder." });
+    }
+  });
+});
 
 export const generatedProgramSchema = z.object({
   ...common,
   operators: z.array(operator).min(1).max(6),
 }).superRefine((program, context) => {
   program.operators.forEach((item, index) => {
+    if (item.type === "reach" && !safeReachTarget(item)) {
+      context.addIssue({ code: "custom", path: ["operators", index], message: "Reach target must stay in front of the same-side shoulder." });
+    }
     const start = item.startTime ?? 0;
     const end = item.endTime ?? program.duration;
     if (start >= end || end > program.duration) {

@@ -1,14 +1,15 @@
 import { useState, type Dispatch, type SetStateAction } from "react";
-import { compileMotionPlan } from "../engine/MotionCompiler";
 import { isRawVmdJson, rawVmdJsonToMotion } from "../engine/RawVmdMotion";
 import { generateMotion } from "../services/generateMotion";
-import { generatePlan } from "../services/api";
+import { generatePlan, type PlanData } from "../services/api";
 import type { MotionDraft } from "../types/motion-draft";
 import PlanLibrary from "./PlanLibrary";
 import "./motionPanel.css";
 
 interface Props {
   onMotionGenerated: (motion: any) => void;
+  onPlanGenerated: (plan: PlanData) => void;
+  playbackError: string | null;
   draft: MotionDraft;
   setDraft: Dispatch<SetStateAction<MotionDraft>>;
 }
@@ -17,6 +18,8 @@ type Mode = "ai" | "manual";
 
 export default function ChatPanel({
   onMotionGenerated,
+  onPlanGenerated,
+  playbackError,
   draft,
   setDraft,
 }: Props) {
@@ -59,12 +62,10 @@ export default function ChatPanel({
 
     try {
       const plan = await generatePlan(prompt);
-      const motion = compileMotionPlan(plan);
 
       console.log("AI MOTION PLAN:", plan);
-      console.log("COMPILED MOTION:", motion);
 
-      onMotionGenerated(motion);
+      onPlanGenerated(plan);
       setDraft((current) => ({
         plan,
         title: prompt.trim().slice(0, 120) || "Untitled plan",
@@ -112,12 +113,9 @@ export default function ChatPanel({
           return;
         }
 
-        const motion = compileMotionPlan(parsed);
-
         console.log("MANUAL MOTION PLAN:", parsed);
-        console.log("COMPILED MANUAL MOTION:", motion);
 
-        onMotionGenerated(motion);
+        onPlanGenerated(parsed);
         setDraft((current) => ({ plan: parsed, title: "Manual plan", revision: current.revision + 1 }));
         return;
       }
@@ -167,9 +165,9 @@ export default function ChatPanel({
         </button>
       </div>
 
-      {error && (
+      {(error || playbackError) && (
         <div className="motion-panel-error" role="alert">
-          {error}
+          {error || playbackError}
         </div>
       )}
 
@@ -185,19 +183,19 @@ export default function ChatPanel({
           />
           <button
             type="button"
-            onClick={handleGenerate}
+            onClick={handleGenerateMotionPlan}
             disabled={loading || !prompt.trim()}
             className="motion-action motion-action-primary"
           >
-            {loading ? "Generating..." : "Generate Motion"}
+            {loading ? "Generating..." : "Generate Motion Plan"}
           </button>
           <button
             type="button"
-            onClick={handleGenerateMotionPlan}
+            onClick={handleGenerate}
             disabled={loading || !prompt.trim()}
             className="motion-action motion-action-secondary"
           >
-            Generate Motion Plan
+            Generate Raw Motion
           </button>
         </div>
       )}
@@ -229,7 +227,7 @@ export default function ChatPanel({
         revision={planRevision}
         onLoad={(plan) => {
           setDraft((current) => ({ ...current, plan }));
-          onMotionGenerated(compileMotionPlan(plan));
+          onPlanGenerated(plan);
         }}
       />
 

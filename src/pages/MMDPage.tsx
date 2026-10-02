@@ -9,6 +9,7 @@ import { MotionPlayer } from "../engine/MotionPlayer";
 import { compileMotionPlan } from "../engine/MotionCompiler";
 import ChatPanel from "../components/ChatPanel";
 import { VMDExporter } from "../engine/VMDExporter";
+import type { PlanData } from "../services/api";
 import type { MotionDraft } from "../types/motion-draft";
 import "./mmdPage.css";
 
@@ -27,9 +28,9 @@ export default function MMDPage({ draft, setDraft }: Props) {
   const meshRef = useRef<any>(null);
   const nativeMixerRef = useRef<THREE.AnimationMixer | null>(null);
 
-  const [motionData, setMotionData] = useState<any>(() =>
-    draft.plan ? compileMotionPlan(draft.plan) : null
-  );
+  const [motionData, setMotionData] = useState<any>(null);
+  const [pendingPlan, setPendingPlan] = useState<PlanData | null>(draft.plan);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [playerVersion, setPlayerVersion] = useState(0);
 
   useEffect(() => {
@@ -354,6 +355,17 @@ export default function MMDPage({ draft, setDraft }: Props) {
   // =========================
 
   useEffect(() => {
+    if (!pendingPlan || !meshRef.current) return;
+    try {
+      setMotionData(compileMotionPlan(pendingPlan, meshRef.current));
+      setPlaybackError(null);
+    } catch (error) {
+      setMotionData(null);
+      setPlaybackError(error instanceof Error ? error.message : "Could not resolve motion plan.");
+    }
+  }, [pendingPlan, playerVersion]);
+
+  useEffect(() => {
     if (!motionData || !playerRef.current) {
       return;
     }
@@ -440,7 +452,21 @@ export default function MMDPage({ draft, setDraft }: Props) {
 
       {/* Chat UI Overlay */}
       <div className="mmd-controls">
-        <ChatPanel onMotionGenerated={setMotionData} draft={draft} setDraft={setDraft} />
+        <ChatPanel
+          onMotionGenerated={(motion) => {
+            setPendingPlan(null);
+            setMotionData(motion);
+            setPlaybackError(null);
+          }}
+          onPlanGenerated={(plan) => {
+            setMotionData(null);
+            setPendingPlan(plan);
+            setPlaybackError(null);
+          }}
+          playbackError={playbackError}
+          draft={draft}
+          setDraft={setDraft}
+        />
       </div>
 
       {/* Buttons Overlay */}

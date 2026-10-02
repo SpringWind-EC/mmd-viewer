@@ -9,6 +9,7 @@
     "start:server": "tsx server/src/index.ts",
     "check:server": "tsc -p server/tsconfig.json",
     "test:server": "node --import tsx --test server/test/*.test.ts",
+    "test:motion": "node --import tsx --test test/*.test.mjs",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },

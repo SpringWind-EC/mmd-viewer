@@ -32,6 +32,7 @@ Valid intensities:
 
 Valid operator types:
 - move_effector
+- reach
 - orient_effector
 - hand_shape
 - finger
@@ -88,12 +89,26 @@ Valid weight directions:
 - right
 - down
 
+For reach, use only right_hand or left_hand. Choose an anchor of head, chest, or hips.
+The offset has right, up, and forward numeric fields, each between -1 and 1.
+Offsets are fractions of that model's arm length; positive right means the character's right,
+positive up means higher, and positive forward means toward the viewer.
+Use reach when the request describes a hand touching, approaching, or reaching a specific
+body-relative point. For a right hand near the right cheek, use head with
+offset {"right": 0.18, "up": -0.08, "forward": 0.18}.
+For a left hand near the left cheek, negate the right offset.
+Do not use reach for feet, steps, or arbitrary world-space targets.
+Keep reach targets in front of the body and on the same side as the chosen hand.
+For head reaches use forward at least 0.12 and right at least 0.08 for the right hand
+(or at most -0.08 for the left hand). For chest or hips use forward at least 0.22.
+Do not place a wrist inside the head or torso.
+
 Rules:
 - Use one to six operators.
 - Use the smallest operator set that explains the request.
 - Treat operators like Blender/MMD controller edits: moving a parent body part or controller automatically carries child bones through the skeleton hierarchy.
 - Do not add detail operators just to make descendants follow a parent; use hand_shape, finger, look, or orient_effector only when those local details are explicitly part of the requested pose.
-- For hand placement, use move_effector only; do not imply elbow, wrist, or finger rotations unless the user explicitly requests those details.
+- For broad hand placement, use move_effector. For a specific point relative to the head, chest, or hips, use reach. Do not add finger detail unless requested.
 - For hands on knees, use move_effector right_hand to right_knee and left_hand to left_knee.
 - For crouch, squat, or kneel with hands on knees, combine shift_weight down with those hand-to-knee move_effector operators. Use mild intensity for a half crouch and medium or strong intensity for a full crouch.
 - If the hands are already on the knees before crouching, sequence the hand-to-knee operators first, then start shift_weight down after them so the app can hold that contact while lowering.
@@ -104,6 +119,7 @@ Rules:
 - Use startTime and endTime only when operators should happen in sequence.
 - If timing is not important, omit startTime and endTime.
 - Use move_effector for hands or torso only. Torso supports forward only.
+- Prefer reach over move_effector when the requested hand placement needs a specific offset from head, chest, or hips.
 - Hands support forward, front_of_face, front_of_chest, chest_center, above_head, and either side_of_head region. For knees, use right_hand to right_knee, left_hand to left_knee, or either hand to knees. Do not target waist or the opposite knee.
 - Use hand_shape for fist, open hand, relaxed hand, or peace sign.
 - Use finger for detailed finger curling, pointing, counting, spreading, or thumb-only motion.
@@ -124,6 +140,23 @@ Rules:
 - Otherwise use intensity medium.
 
 Examples:
+
+User: put the right hand near the right cheek and look left
+Output:
+{
+  "duration": 2.5,
+  "loop": false,
+  "operators": [
+    {
+      "type": "reach",
+      "effector": "right_hand",
+      "anchor": "head",
+      "offset": { "right": 0.18, "up": -0.08, "forward": 0.18 }
+    },
+    { "type": "look", "target": "left" }
+  ],
+  "holdFinalPose": true
+}
 
 User: wave hello
 Output:

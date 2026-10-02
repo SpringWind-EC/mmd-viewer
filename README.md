@@ -27,8 +27,8 @@ The database file and tables are created automatically on the first server start
 Start the API and frontend in separate terminals:
 
 ```bash
-npm run dev:server
-npm run dev
+npm.cmd run dev:server
+npm.cmd run dev
 ```
 
 Open `http://localhost:5173/MMD`. Vite forwards `/api` requests to Fastify on port 3001. Use the **Sign in** or **Create account** links in **My plans** to open the separate account pages, then return to the viewer to generate or paste and save a motion plan. Saved plans belong to that account. AI generation requires sign-in. Direct keyframe motions and raw VMD JSON can be played but are not stored in the plan library.

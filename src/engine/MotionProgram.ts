@@ -36,6 +36,15 @@ export type FacingTarget =
 
 export type MotionOperator =
   | {
+      type: "reach";
+      effector: "right_hand" | "left_hand";
+      anchor: "head" | "chest" | "hips";
+      // Fractions of arm length in body-relative right/up/forward directions.
+      offset: { right: number; up: number; forward: number };
+      startTime?: number;
+      endTime?: number;
+    }
+  | {
       type: "move_effector";
       effector: BodyEffector;
       region: BodyRegion;

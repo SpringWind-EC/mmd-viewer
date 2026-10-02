@@ -1,6 +1,8 @@
 import type { MotionAction, MotionPlan } from "./MotionPlan";
+import type { SkinnedMesh } from "three";
 import { compileMotionOperator, type MotionOperatorContext } from "./MotionOperatorCompiler";
 import type { MotionOperator, MotionProgram } from "./MotionProgram";
+import { resolveReach } from "./RigMotionResolver";
 import {
   mergeBones,
   mergePositions,
@@ -81,12 +83,18 @@ function buildClip(
 function buildOperatorClip(
   operator: MotionOperator,
   duration: number,
-  context: MotionOperatorContext
+  context: MotionOperatorContext,
+  mesh?: SkinnedMesh
 ): ActionClip {
   const startTime = clamp(operator.startTime ?? 0, 0, duration);
   const requestedEnd = operator.endTime ?? duration;
   const endTime = clamp(Math.max(requestedEnd, startTime + 0.1), 0, duration);
-  const compiled = compileMotionOperator(operator, context);
+  if (operator.type === "reach" && !mesh) {
+    throw new Error("Reach plans require a loaded model.");
+  }
+  const compiled = operator.type === "reach"
+    ? { primitive: resolveReach(mesh!, operator), priority: 20 }
+    : compileMotionOperator(operator, context);
 
   return {
     primitive: compiled.primitive,
@@ -437,7 +445,7 @@ function composeSamples(
 //
 // Output:
 // - MotionData-like object that MotionPlayer can play and VMDExporter can save.
-export function compileMotionPlan(plan: MotionPlan | MotionProgram) {
+export function compileMotionPlan(plan: MotionPlan | MotionProgram, mesh?: SkinnedMesh) {
   const duration = clamp(
     plan.duration && plan.duration > 0 ? plan.duration : DEFAULT_DURATION,
     0.5,
@@ -448,7 +456,7 @@ export function compileMotionPlan(plan: MotionPlan | MotionProgram) {
   const clips = linkClipTimeline(
     isMotionProgram(plan)
       ? plan.operators.map((operator) =>
-          buildOperatorClip(operator, duration, context)
+          buildOperatorClip(operator, duration, context, mesh)
         )
       : (plan.actions && plan.actions.length > 0
           ? plan.actions
