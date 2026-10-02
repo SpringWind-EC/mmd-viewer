@@ -98,7 +98,7 @@ export default function PlanLibrary({ currentPlan, suggestedTitle, revision, onL
       {!ready && <p>Loading account...</p>}
       {ready && !user && (
         <div className="plan-library-guest">
-          <p>Sign in to save and load plans.</p>
+          <p>{currentPlan ? "Sign in to save this plan." : "Sign in to save and load plans."}</p>
           <Link to="/login">Sign in</Link>
           <Link to="/signup">Create account</Link>
         </div>

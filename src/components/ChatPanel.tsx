@@ -1,28 +1,31 @@
-import { useState } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import { compileMotionPlan } from "../engine/MotionCompiler";
 import { isRawVmdJson, rawVmdJsonToMotion } from "../engine/RawVmdMotion";
 import { generateMotion } from "../services/generateMotion";
-import { generatePlan, type PlanData } from "../services/api";
+import { generatePlan } from "../services/api";
+import type { MotionDraft } from "../types/motion-draft";
 import PlanLibrary from "./PlanLibrary";
 import "./motionPanel.css";
 
 interface Props {
   onMotionGenerated: (motion: any) => void;
+  draft: MotionDraft;
+  setDraft: Dispatch<SetStateAction<MotionDraft>>;
 }
 
 type Mode = "ai" | "manual";
 
 export default function ChatPanel({
   onMotionGenerated,
+  draft,
+  setDraft,
 }: Props) {
 
   const [mode, setMode] = useState<Mode>("ai");
 
   const [prompt, setPrompt] = useState("");
   const [jsonInput, setJsonInput] = useState("");
-  const [currentPlan, setCurrentPlan] = useState<PlanData | null>(null);
-  const [planTitle, setPlanTitle] = useState("");
-  const [planRevision, setPlanRevision] = useState(0);
+  const { plan: currentPlan, title: planTitle, revision: planRevision } = draft;
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +43,7 @@ export default function ChatPanel({
       console.log("AI MOTION RESPONSE:", motion);
 
       onMotionGenerated(motion);
-      setCurrentPlan(null);
+      setDraft((current) => ({ ...current, plan: null }));
 
     } catch (err: any) {
       console.error(err);
@@ -62,9 +65,11 @@ export default function ChatPanel({
       console.log("COMPILED MOTION:", motion);
 
       onMotionGenerated(motion);
-      setCurrentPlan(plan);
-      setPlanTitle(prompt.trim().slice(0, 120) || "Untitled plan");
-      setPlanRevision((revision) => revision + 1);
+      setDraft((current) => ({
+        plan,
+        title: prompt.trim().slice(0, 120) || "Untitled plan",
+        revision: current.revision + 1,
+      }));
     } catch (err: any) {
       console.error(err);
       setError((err as Error).message || "Motion plan generation failed");
@@ -89,7 +94,7 @@ export default function ChatPanel({
         console.log("COMPILED RAW VMD MOTION:", motion);
 
         onMotionGenerated(motion);
-        setCurrentPlan(null);
+        setDraft((current) => ({ ...current, plan: null }));
         return;
       }
 
@@ -113,9 +118,7 @@ export default function ChatPanel({
         console.log("COMPILED MANUAL MOTION:", motion);
 
         onMotionGenerated(motion);
-        setCurrentPlan(parsed);
-        setPlanTitle("Manual plan");
-        setPlanRevision((revision) => revision + 1);
+        setDraft((current) => ({ plan: parsed, title: "Manual plan", revision: current.revision + 1 }));
         return;
       }
 
@@ -130,7 +133,7 @@ export default function ChatPanel({
       }
       
       onMotionGenerated(parsed);
-      setCurrentPlan(null);
+      setDraft((current) => ({ ...current, plan: null }));
 
     } catch (err) {
       console.error(err);
@@ -225,7 +228,7 @@ export default function ChatPanel({
         suggestedTitle={planTitle}
         revision={planRevision}
         onLoad={(plan) => {
-          setCurrentPlan(plan);
+          setDraft((current) => ({ ...current, plan }));
           onMotionGenerated(compileMotionPlan(plan));
         }}
       />

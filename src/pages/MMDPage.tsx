@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import * as THREE from "three";
 import { MMDLoader } from "three/examples/jsm/loaders/MMDLoader.js";
 import { MMDAnimationHelper } from "three/examples/jsm/animation/MMDAnimationHelper.js";
@@ -6,11 +6,18 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { CCDIKSolver } from "three/examples/jsm/animation/CCDIKSolver.js";
 
 import { MotionPlayer } from "../engine/MotionPlayer";
+import { compileMotionPlan } from "../engine/MotionCompiler";
 import ChatPanel from "../components/ChatPanel";
 import { VMDExporter } from "../engine/VMDExporter";
+import type { MotionDraft } from "../types/motion-draft";
 import "./mmdPage.css";
 
-export default function MMDPage() {
+interface Props {
+  draft: MotionDraft;
+  setDraft: Dispatch<SetStateAction<MotionDraft>>;
+}
+
+export default function MMDPage({ draft, setDraft }: Props) {
   const playerRef = useRef<any>(null);
   const mountRef = useRef<HTMLDivElement>(null);
   const ikSolverRef = useRef<any>(null);
@@ -20,7 +27,10 @@ export default function MMDPage() {
   const meshRef = useRef<any>(null);
   const nativeMixerRef = useRef<THREE.AnimationMixer | null>(null);
 
-  const [motionData, setMotionData] = useState<any>(null);
+  const [motionData, setMotionData] = useState<any>(() =>
+    draft.plan ? compileMotionPlan(draft.plan) : null
+  );
+  const [playerVersion, setPlayerVersion] = useState(0);
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -221,6 +231,7 @@ export default function MMDPage() {
           grant: false,
           physics: false,
         });
+        setPlayerVersion((version) => version + 1);
       }
     );
 
@@ -388,7 +399,7 @@ export default function MMDPage() {
     }
 
     playerRef.current.loadMotion(motionData);
-  }, [motionData]);
+  }, [motionData, playerVersion]);
 
   // =========================
   // UI
@@ -429,7 +440,7 @@ export default function MMDPage() {
 
       {/* Chat UI Overlay */}
       <div className="mmd-controls">
-        <ChatPanel onMotionGenerated={setMotionData} />
+        <ChatPanel onMotionGenerated={setMotionData} draft={draft} setDraft={setDraft} />
       </div>
 
       {/* Buttons Overlay */}
