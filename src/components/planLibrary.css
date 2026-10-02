@@ -7,8 +7,7 @@
 
 .plan-library-heading,
 .plan-library-actions,
-.plan-library-item,
-.plan-library-modes {
+.plan-library-item {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -33,7 +32,6 @@
 .plan-library button:disabled { opacity: .55; cursor: not-allowed; }
 .plan-library button:focus-visible { outline: 3px solid #70c7dc; outline-offset: 2px; }
 
-.plan-library-auth,
 .plan-library-save { display: grid; gap: 9px; margin-top: 11px; }
 .plan-library label { display: grid; gap: 5px; color: #31545d; font-weight: 600; }
 .plan-library input {
@@ -48,13 +46,25 @@
   font: inherit;
 }
 
-.plan-library-modes { padding: 3px; border-radius: 5px; background: #e0f1f4; }
-.plan-library-modes button { flex: 1; border: 0; background: transparent; color: #466a72; }
-.plan-library-modes button.active { background: #d2efe4; color: #116e55; box-shadow: 0 1px 3px rgba(21, 72, 80, .1); }
-.plan-library-auth > button,
 .plan-library-save .plan-library-actions button:first-child { border-color: #168668; background: #168668; color: #fff; }
-.plan-library-auth > button:hover:not(:disabled),
 .plan-library-save .plan-library-actions button:first-child:hover:not(:disabled) { border-color: #0f7259; background: #0f7259; }
+
+.plan-library-guest { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-top: 10px; }
+.plan-library-guest p { flex-basis: 100%; color: #49717a; }
+.plan-library-guest a {
+  min-height: 32px;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  border: 1px solid #a5cfd7;
+  border-radius: 4px;
+  background: #fff;
+  color: #285a65;
+  font-weight: 600;
+  text-decoration: none;
+}
+.plan-library-guest a:first-of-type { border-color: #168668; background: #168668; color: #fff; }
+.plan-library-guest a:hover { border-color: #6bb9c9; background: #e6f5f7; color: #285a65; }
+.plan-library-guest a:focus-visible { outline: 3px solid #70c7dc; outline-offset: 2px; }
 
 .plan-library-email { margin: 8px 0; color: #49717a; overflow-wrap: anywhere; }
 .plan-library-error { margin: 9px 0; color: #a12d3d; overflow-wrap: anywhere; }

@@ -1,4 +1,5 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { accountApi, planApi, type Account, type PlanData, type SavedPlan } from "../services/api";
 import "./planLibrary.css";
 
@@ -13,9 +14,6 @@ export default function PlanLibrary({ currentPlan, suggestedTitle, revision, onL
   const [user, setUser] = useState<Account | null>(null);
   const [ready, setReady] = useState(false);
   const [plans, setPlans] = useState<SavedPlan[]>([]);
-  const [authMode, setAuthMode] = useState<"login" | "register">("login");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [title, setTitle] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -43,23 +41,6 @@ export default function PlanLibrary({ currentPlan, suggestedTitle, revision, onL
     setSelectedId(null);
     setTitle(suggestedTitle);
   }, [revision, suggestedTitle]);
-
-  async function handleAuth(event: FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const result = authMode === "register"
-        ? await accountApi.register(email, password)
-        : await accountApi.login(email, password);
-      setUser(result.user);
-      setPassword("");
-    } catch (error) {
-      setError((error as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function handleLogout() {
     setBusy(true);
@@ -116,15 +97,11 @@ export default function PlanLibrary({ currentPlan, suggestedTitle, revision, onL
       {error && <p className="plan-library-error" role="alert">{error}</p>}
       {!ready && <p>Loading account...</p>}
       {ready && !user && (
-        <form onSubmit={handleAuth} className="plan-library-auth">
-          <div className="plan-library-modes" role="group" aria-label="Account action">
-            <button type="button" className={authMode === "login" ? "active" : ""} onClick={() => setAuthMode("login")}>Sign in</button>
-            <button type="button" className={authMode === "register" ? "active" : ""} onClick={() => setAuthMode("register")}>Create account</button>
-          </div>
-          <label>Email<input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-          <label>Password<input type="password" autoComplete={authMode === "register" ? "new-password" : "current-password"} required minLength={12} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
-          <button type="submit" disabled={busy}>{busy ? "Please wait..." : authMode === "register" ? "Create account" : "Sign in"}</button>
-        </form>
+        <div className="plan-library-guest">
+          <p>Sign in to save and load plans.</p>
+          <Link to="/login">Sign in</Link>
+          <Link to="/signup">Create account</Link>
+        </div>
       )}
       {user && (
         <>
