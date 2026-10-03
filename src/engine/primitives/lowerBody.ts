@@ -11,17 +11,15 @@ export function kneeBendPose(intensity: Intensity): BoneMap {
     [Bones.rightToeIk]: q(RigCalibration.leg.toeGrip[intensity]),
     [Bones.rightAnkle]: q(RigCalibration.leg.heelCounter[intensity]),
     [Bones.rightToe]: q(RigCalibration.leg.toeGrip[intensity]),
-    [Bones.rightLegD]: q(RigCalibration.leg.bendThigh[intensity]),
-    [Bones.rightKneeD]: q(RigCalibration.leg.bendKnee[intensity]),
-    [Bones.rightAnkleD]: q(RigCalibration.leg.ankleCounter[intensity]),
+    [Bones.rightLeg]: q(RigCalibration.leg.bendThigh[intensity]),
+    [Bones.rightKnee]: q(RigCalibration.leg.bendKnee[intensity]),
     [Bones.rightFootEx]: q(RigCalibration.leg.toeGrip[intensity]),
     [Bones.leftFootIk]: [...neutral],
     [Bones.leftToeIk]: q(RigCalibration.leg.toeGrip[intensity]),
     [Bones.leftAnkle]: q(RigCalibration.leg.heelCounter[intensity]),
     [Bones.leftToe]: q(RigCalibration.leg.toeGrip[intensity]),
-    [Bones.leftLegD]: q(RigCalibration.leg.bendThigh[intensity]),
-    [Bones.leftKneeD]: q(RigCalibration.leg.bendKnee[intensity]),
-    [Bones.leftAnkleD]: q(RigCalibration.leg.ankleCounter[intensity]),
+    [Bones.leftLeg]: q(RigCalibration.leg.bendThigh[intensity]),
+    [Bones.leftKnee]: q(RigCalibration.leg.bendKnee[intensity]),
     [Bones.leftFootEx]: q(RigCalibration.leg.toeGrip[intensity]),
   };
 }
@@ -121,7 +119,16 @@ const learnedContactHoldFrames: LearnedContactHoldFrame[] = [
 ];
 
 function crouchScale(intensity: Intensity) {
-  return intensity === "mild" ? 0.43 : intensity === "strong" ? 1.08 : 1;
+  return intensity === "mild" ? 0.08 : intensity === "strong" ? 0.45 : 0.2;
+}
+
+function crouchLegPose(intensity: Intensity, progress: number): BoneMap {
+  return Object.fromEntries(
+    Object.entries(kneeBendPose(intensity)).map(([name, rotation]) => [
+      name,
+      nlerp(neutral, rotation, progress),
+    ])
+  );
 }
 
 function scaledPosition(values: readonly number[], scale: number): [number, number, number] {
@@ -193,8 +200,8 @@ function crouchFramePositions(
   };
 }
 
-export function crouchPose(_intensity: Intensity): BoneMap {
-  return {};
+export function crouchPose(intensity: Intensity): BoneMap {
+  return kneeBendPose(intensity);
 }
 
 export function crouchPositions(intensity: Intensity): PositionMap {
@@ -215,7 +222,10 @@ export function crouchPrimitive(
       holdProgress: 1,
       frames: learnedContactHoldFrames.map((frame) => ({
         progress: frame.progress,
-        bones: handKneePose(frame, contactHoldSide, intensity),
+        bones: mergeBones(
+          crouchLegPose(intensity, frame.progress),
+          handKneePose(frame, contactHoldSide, intensity)
+        ),
         positions: crouchFramePositions(frame, intensity),
       })),
     };
@@ -226,7 +236,7 @@ export function crouchPrimitive(
     holdProgress: 1,
     frames: learnedCrouchFrames.map((frame) => ({
       progress: frame.progress,
-      bones: {},
+      bones: crouchLegPose(intensity, frame.progress),
       positions: crouchFramePositions(frame, intensity),
     })),
   };
@@ -285,39 +295,19 @@ function runArmSwingPose(
   };
 }
 
-function runLegPose(
+function runToePose(
   rightForward: boolean,
   intensity: Intensity,
-  strideScale = 1,
-  kneeScale = 1
+  strideScale = 1
 ): BoneMap {
   const amount = runAmount(intensity);
-  const forwardThigh = -0.42 * amount * strideScale;
-  const backThigh = 0.24 * amount * strideScale;
-  const liftKnee = 0.52 * amount * kneeScale;
-  const pushKnee = 0.22 * amount * (0.75 + kneeScale * 0.25);
-  const ankle = 0.18 * amount;
   const toe = 0.16 * amount;
 
   return {
-    [Bones.rightLegD]: axisQuat(
-      rightForward ? forwardThigh : backThigh,
-      rightForward ? -0.04 : 0.03,
-      rightForward ? -0.03 : 0.02
-    ),
-    [Bones.leftLegD]: axisQuat(
-      rightForward ? backThigh : forwardThigh,
-      rightForward ? -0.03 : 0.04,
-      rightForward ? -0.02 : 0.03
-    ),
-    [Bones.rightKneeD]: axisQuat(rightForward ? liftKnee : pushKnee, 0, 0),
-    [Bones.leftKneeD]: axisQuat(rightForward ? pushKnee : liftKnee, 0, 0),
-    [Bones.rightAnkleD]: axisQuat(rightForward ? -ankle * 0.7 : ankle, 0, 0),
-    [Bones.leftAnkleD]: axisQuat(rightForward ? ankle : -ankle * 0.7, 0, 0),
-    [Bones.rightToe]: axisQuat(rightForward ? toe * 0.4 : toe, 0, 0),
-    [Bones.leftToe]: axisQuat(rightForward ? toe : toe * 0.4, 0, 0),
-    [Bones.rightFootEx]: axisQuat(rightForward ? toe * 0.35 : toe, 0, 0),
-    [Bones.leftFootEx]: axisQuat(rightForward ? toe : toe * 0.35, 0, 0),
+    [Bones.rightToe]: axisQuat(rightForward ? 0 : toe * strideScale, 0, 0),
+    [Bones.leftToe]: axisQuat(rightForward ? toe * strideScale : 0, 0, 0),
+    [Bones.rightFootEx]: axisQuat(rightForward ? 0 : toe * strideScale * 0.35, 0, 0),
+    [Bones.leftFootEx]: axisQuat(rightForward ? toe * strideScale * 0.35 : 0, 0, 0),
   };
 }
 
@@ -325,7 +315,6 @@ function runPose(
   rightLegForward: boolean,
   intensity: Intensity,
   strideScale = 1,
-  kneeScale = 1,
   bodyScale = 1
 ): BoneMap {
   const amount = runAmount(intensity);
@@ -339,68 +328,41 @@ function runPose(
       [Bones.head]: axisQuat(-0.04 * amount * bodyScale, rightLegForward ? -0.012 : 0.012, 0),
     },
     runArmSwingPose(!rightLegForward, intensity, strideScale),
-    runLegPose(rightLegForward, intensity, strideScale, kneeScale)
+    runToePose(rightLegForward, intensity, strideScale)
   );
 }
 
+type RunFootOffset = readonly [lift: number, depth: number];
+
 function runPositions(
-  rightLegForward: boolean,
   intensity: Intensity,
-  liftScale = 0,
-  strideScale = 1,
-  dropScale = 1
+  rightFoot: RunFootOffset,
+  leftFoot: RunFootOffset,
+  dropScale = 1,
+  lateralSign = 1
 ): PositionMap {
   const amount = runAmount(intensity);
-  const stride = 0.38 * amount * strideScale;
-  const lateral = 0.07 * amount;
-  const lift = 0.13 * amount * liftScale;
-  const drop = 0.16 * amount * dropScale - lift * 0.45;
+  const right: [number, number, number] = [0, rightFoot[0] * amount, rightFoot[1] * amount * 3];
+  const left: [number, number, number] = [0, leftFoot[0] * amount, leftFoot[1] * amount * 3];
 
   return {
-    [Bones.center]: [
-      rightLegForward ? -lateral * 0.35 : lateral * 0.35,
-      -drop,
-      -0.18 * amount,
-    ],
-    [Bones.rightFootIk]: [
-      rightLegForward ? 0.08 : 0.02,
-      lift,
-      rightLegForward ? -stride : stride * 0.75,
-    ],
-    [Bones.rightToeIk]: [
-      rightLegForward ? 0.08 : 0.02,
-      lift,
-      rightLegForward ? -stride : stride * 0.75,
-    ],
-    [Bones.leftFootIk]: [
-      rightLegForward ? -0.02 : -0.08,
-      lift,
-      rightLegForward ? stride * 0.75 : -stride,
-    ],
-    [Bones.leftToeIk]: [
-      rightLegForward ? -0.02 : -0.08,
-      lift,
-      rightLegForward ? stride * 0.75 : -stride,
-    ],
+    [Bones.center]: [-lateralSign * 0.024 * amount, -0.04 * amount * (dropScale - 1), -0.18 * amount],
+    [Bones.rightFootIk]: right,
+    [Bones.rightToeIk]: [0, 0, 0],
+    [Bones.leftFootIk]: left,
+    [Bones.leftToeIk]: [0, 0, 0],
   };
 }
 
 export function runForwardPrimitive(intensity: Intensity): MotionPrimitive {
-  const amount = runAmount(intensity);
   const rightContact = runPose(true, intensity);
   const leftContact = runPose(false, intensity);
-  const rightCompression = runPose(true, intensity, 0.82, 0.82, 0.9);
-  const leftCompression = runPose(false, intensity, 0.82, 0.82, 0.9);
-  const rightPassing = runPose(true, intensity, 0.28, 0.55, 0.65);
-  const leftPassing = runPose(false, intensity, 0.28, 0.55, 0.65);
-  const rightFlight = mergeBones(runPose(true, intensity, 1.05, 1.12, 1), {
-    [Bones.rightKneeD]: axisQuat(0.54 * amount, 0, 0),
-    [Bones.leftKneeD]: axisQuat(0.34 * amount, 0, 0),
-  });
-  const leftFlight = mergeBones(runPose(false, intensity, 1.05, 1.12, 1), {
-    [Bones.rightKneeD]: axisQuat(0.34 * amount, 0, 0),
-    [Bones.leftKneeD]: axisQuat(0.54 * amount, 0, 0),
-  });
+  const rightCompression = runPose(true, intensity, 0.82, 0.9);
+  const leftCompression = runPose(false, intensity, 0.82, 0.9);
+  const rightPassing = runPose(true, intensity, 0.28, 0.65);
+  const leftPassing = runPose(false, intensity, 0.28, 0.65);
+  const rightFlight = runPose(true, intensity, 1.05);
+  const leftFlight = runPose(false, intensity, 1.05);
 
   return {
     loop: true,
@@ -409,127 +371,119 @@ export function runForwardPrimitive(intensity: Intensity): MotionPrimitive {
       {
         progress: 0,
         bones: rightContact,
-        positions: runPositions(true, intensity, 0, 1, 1),
+        positions: runPositions(intensity, [0, -0.38], [0.38, 0.285]),
       },
       {
         progress: 0.12,
         bones: rightCompression,
-        positions: runPositions(true, intensity, 0, 0.82, 1.15),
+        positions: runPositions(intensity, [0, -0.38], [0.42, 0.18], 1.15),
       },
       {
         progress: 0.25,
         bones: rightPassing,
-        positions: runPositions(true, intensity, 0.25, 0.32, 0.85),
+        positions: runPositions(intensity, [0.4, -0.38], [0.45, -0.03], 0.85),
       },
       {
         progress: 0.38,
         bones: rightFlight,
-        positions: runPositions(true, intensity, 1, 1.05, 0.55),
+        positions: runPositions(intensity, [0.45, 0.285], [0.48, -0.38], 0.55),
       },
       {
         progress: 0.5,
         bones: leftContact,
-        positions: runPositions(false, intensity, 0, 1, 1),
+        positions: runPositions(intensity, [0.38, 0.285], [0, -0.38], 1, -1),
       },
       {
         progress: 0.62,
         bones: leftCompression,
-        positions: runPositions(false, intensity, 0, 0.82, 1.15),
+        positions: runPositions(intensity, [0.42, 0.18], [0, -0.38], 1.15, -1),
       },
       {
         progress: 0.75,
         bones: leftPassing,
-        positions: runPositions(false, intensity, 0.25, 0.32, 0.85),
+        positions: runPositions(intensity, [0.45, -0.03], [0.4, -0.38], 0.85, -1),
       },
       {
         progress: 0.88,
         bones: leftFlight,
-        positions: runPositions(false, intensity, 1, 1.05, 0.55),
+        positions: runPositions(intensity, [0.48, -0.38], [0.45, 0.285], 0.55, -1),
       },
       {
         progress: 1,
         bones: rightContact,
-        positions: runPositions(true, intensity, 0, 1, 1),
+        positions: runPositions(intensity, [0, -0.38], [0.38, 0.285]),
       },
     ],
   };
 }
 
 export function stepPose(type: MotionAction["type"], intensity: Intensity): BoneMap {
-  const bend = intensity === "mild" ? "mild" : "medium";
-
-  if (type === "step_back") {
-    return mergeBones(kneeBendPose(bend), {
-      [Bones.rightLegD]: q(RigCalibration.leg.rightStepBack),
-      [Bones.leftLegD]: q(RigCalibration.leg.leftStepBack),
-      [Bones.rightToe]: q(RigCalibration.leg.toeGrip[bend]),
-      [Bones.leftToe]: q(RigCalibration.leg.toeGrip[bend]),
-    });
-  }
-
-  if (type === "step_left") {
-    return mergeBones(kneeBendPose(bend), {
-      [Bones.rightLegD]: [-0.12, 0, -0.1, 0.988],
-      [Bones.leftLegD]: [-0.08, 0, 0.12, 0.99],
-      [Bones.rightFootEx]: [0.08, 0, -0.03, 0.996],
-      [Bones.leftFootEx]: [0.08, 0, 0.03, 0.996],
-    });
-  }
-
-  if (type === "step_right") {
-    return mergeBones(kneeBendPose(bend), {
-      [Bones.rightLegD]: [-0.08, 0, -0.12, 0.99],
-      [Bones.leftLegD]: [-0.12, 0, 0.1, 0.988],
-      [Bones.rightFootEx]: [0.08, 0, -0.03, 0.996],
-      [Bones.leftFootEx]: [0.08, 0, 0.03, 0.996],
-    });
-  }
-
-  return mergeBones(kneeBendPose(bend), {
-    [Bones.rightLegD]: q(RigCalibration.leg.rightStepForward),
-    [Bones.leftLegD]: q(RigCalibration.leg.leftStepForward),
-    [Bones.rightToe]: q(RigCalibration.leg.toeGrip[bend]),
-    [Bones.leftToe]: q(RigCalibration.leg.toeGrip[bend]),
-  });
+  const amount = intensity === "strong" ? 1.25 : intensity === "mild" ? 0.7 : 1;
+  const forwardLean = type === "step_forward" ? 0.045 : type === "step_back" ? -0.045 : 0;
+  const sideLean = type === "step_left" ? -0.04 : type === "step_right" ? 0.04 : 0;
+  return { [Bones.upperBody]: axisQuat(forwardLean * amount, 0, sideLean * amount) };
 }
 
 export function stepPositions(
   type: MotionAction["type"],
   intensity: Intensity
 ): PositionMap {
-  const amount = intensity === "strong" ? 0.35 : intensity === "mild" ? 0.14 : 0.24;
+  const amount = intensity === "strong" ? 2.4 : intensity === "mild" ? 0.9 : 1.6;
+  const displacement: [number, number, number] =
+    type === "step_back" ? [0, 0, amount] :
+    type === "step_left" ? [amount, 0, 0] :
+    type === "step_right" ? [-amount, 0, 0] : [0, 0, -amount];
+  return {
+    [Bones.center]: [...displacement],
+    [Bones.rightFootIk]: [...displacement],
+    [Bones.rightToeIk]: [0, 0, 0],
+    [Bones.leftFootIk]: [...displacement],
+    [Bones.leftToeIk]: [0, 0, 0],
+  };
+}
 
-  if (type === "step_back") {
+export function stepPrimitive(type: MotionAction["type"], intensity: Intensity): MotionPrimitive {
+  const pose = stepPose(type, intensity);
+  const destination = stepPositions(type, intensity);
+  const leadingFoot = type === "step_left" ? Bones.leftFootIk : Bones.rightFootIk;
+  const trailingFoot = type === "step_left" ? Bones.rightFootIk : Bones.leftFootIk;
+  const lift = intensity === "strong" ? 0.75 : intensity === "mild" ? 0.38 : 0.55;
+  const positionsAt = (
+    leadTravel: number,
+    trailTravel: number,
+    centerTravel: number,
+    leadLift = 0,
+    trailLift = 0
+  ): PositionMap => {
+    const travel = (fraction: number, height: number): [number, number, number] => [
+      destination[Bones.center][0] * fraction,
+      height,
+      destination[Bones.center][2] * fraction,
+    ];
     return {
-      [Bones.rightFootIk]: [0.08, 0, amount],
-      [Bones.rightToeIk]: [0.08, 0, amount],
-      [Bones.leftFootIk]: [-0.08, 0, -amount * 0.4],
-      [Bones.leftToeIk]: [-0.08, 0, -amount * 0.4],
+      [Bones.center]: travel(centerTravel, 0),
+      [Bones.rightFootIk]: [0, 0, 0],
+      [Bones.rightToeIk]: [0, 0, 0],
+      [Bones.leftFootIk]: [0, 0, 0],
+      [Bones.leftToeIk]: [0, 0, 0],
+      [leadingFoot]: travel(leadTravel, leadLift),
+      [trailingFoot]: travel(trailTravel, trailLift),
     };
-  }
-
-  if (type === "step_left") {
-    return {
-      [Bones.rightFootIk]: [amount * 0.3, 0, 0],
-      [Bones.rightToeIk]: [amount * 0.3, 0, 0],
-      [Bones.leftFootIk]: [-amount, 0, 0],
-      [Bones.leftToeIk]: [-amount, 0, 0],
-    };
-  }
-
-  if (type === "step_right") {
-    return {
-      [Bones.rightFootIk]: [amount, 0, 0],
-      [Bones.rightToeIk]: [amount, 0, 0],
-      [Bones.leftFootIk]: [-amount * 0.3, 0, 0],
-      [Bones.leftToeIk]: [-amount * 0.3, 0, 0],
-    };
-  }
+  };
 
   return {
-    [Bones.rightFootIk]: [0.08, 0, -amount],
-    [Bones.rightToeIk]: [0.08, 0, -amount],
-    [Bones.leftFootIk]: [-0.08, 0, amount * 0.4],
-    [Bones.leftToeIk]: [-0.08, 0, amount * 0.4],
+    holdFinalPose: true,
+    frames: [
+      { progress: 0, bones: {}, positions: positionsAt(0, 0, 0) },
+      { progress: 0.12, bones: pose, positions: positionsAt(0, 0, 0) },
+      { progress: 0.22, bones: pose, positions: positionsAt(0, 0, 0, lift) },
+      { progress: 0.42, bones: pose, positions: positionsAt(1, 0, 0.3, lift) },
+      { progress: 0.52, bones: pose, positions: positionsAt(1, 0, 0.5) },
+      { progress: 0.62, bones: pose, positions: positionsAt(1, 0, 0.55) },
+      { progress: 0.7, bones: pose, positions: positionsAt(1, 0, 0.65, 0, lift) },
+      { progress: 0.84, bones: pose, positions: positionsAt(1, 1, 0.85, 0, lift) },
+      { progress: 0.94, bones: {}, positions: positionsAt(1, 1, 1) },
+      { progress: 1, bones: {}, positions: positionsAt(1, 1, 1) },
+    ],
   };
 }

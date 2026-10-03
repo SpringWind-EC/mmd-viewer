@@ -4,7 +4,7 @@ import { mergeBones, heldPosePrimitive, posePrimitive } from "./core";
 import { bothHandsPose, bothPeaceSignsPose, fingerControlPose, handPose, peaceSignPose } from "./hands";
 import { bodyLeanBackward, bodyLeanForward, headPose, leftArmForwardPose, rightArmForwardPose, twoArmsForward } from "./upperBody";
 import { fightingStancePose, fightingStancePositions, guardPose, punchPrimitive } from "./combat";
-import { crouchPositions, crouchPrimitive, kneeBendPose, runForwardPrimitive, stepPose, stepPositions } from "./lowerBody";
+import { crouchPositions, crouchPrimitive, kneeBendPose, runForwardPrimitive, stepPrimitive } from "./lowerBody";
 import { danceSwayPrimitive, idleBreathingPrimitive, nodPrimitive, photoPeacePrimitive, shakeHeadPrimitive, wavePrimitive } from "./gestures";
 
 export function primitiveForAction(action: MotionAction): MotionPrimitive {
@@ -114,11 +114,7 @@ export function primitiveForAction(action: MotionAction): MotionPrimitive {
     case "step_back":
     case "step_left":
     case "step_right":
-      return posePrimitive(
-        stepPose(action.type, intensity),
-        true,
-        stepPositions(action.type, intensity)
-      );
+      return stepPrimitive(action.type, intensity);
     default:
       return posePrimitive({});
   }

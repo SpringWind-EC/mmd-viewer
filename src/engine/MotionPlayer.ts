@@ -66,7 +66,7 @@ export class MotionPlayer {
     console.log("Motion loaded:", motion);
   }
 
-  update() {
+  update(elapsedSeconds?: number) {
     if (!this.motion) return;
 
     const keyframes = this.motion.keyframes;
@@ -79,7 +79,7 @@ export class MotionPlayer {
 
     if (!duration || duration <= 0) return;
 
-    const elapsed =
+    const elapsed = elapsedSeconds ??
       (performance.now() - this.startTime) / 1000;
 
     // Important:

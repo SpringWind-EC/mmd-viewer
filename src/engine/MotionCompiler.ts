@@ -92,9 +92,26 @@ function buildOperatorClip(
   if (operator.type === "reach" && !mesh) {
     throw new Error("Reach plans require a loaded model.");
   }
+  const handRegion = operator.type === "move_effector" &&
+    (operator.effector === "right_hand" || operator.effector === "left_hand") &&
+    (operator.region === "front_of_face" || operator.region === "front_of_chest" || operator.region === "chest_center") &&
+    !context.guardFrontChestRoleForOperator?.(operator);
+  const side = operator.type === "move_effector" && operator.effector === "left_hand" ? -1 : 1;
   const compiled = operator.type === "reach"
     ? { primitive: resolveReach(mesh!, operator), priority: 20 }
-    : compileMotionOperator(operator, context);
+    : handRegion && mesh && operator.type === "move_effector"
+      ? {
+          primitive: resolveReach(mesh, {
+            type: "reach",
+            effector: operator.effector as "right_hand" | "left_hand",
+            anchor: operator.region === "front_of_face" ? "head" : "chest",
+            offset: operator.region === "front_of_face"
+              ? { right: side * 0.25, up: -0.08, forward: 0.24 }
+              : { right: side * (operator.region === "chest_center" ? 0.12 : 0.22), up: 0.04, forward: 0.36 },
+          }),
+          priority: 20,
+        }
+      : compileMotionOperator(operator, context);
 
   return {
     primitive: compiled.primitive,

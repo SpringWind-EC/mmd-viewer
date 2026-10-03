@@ -38,6 +38,7 @@ export default function MMDPage({ draft, setDraft }: Props) {
 
     let disposed = false;
     let animationFrameId = 0;
+    let qaProgress: number | null = null;
     let mesh: any = null;
     let sortedPmxBonesData: any[] | null = null;
 
@@ -114,6 +115,47 @@ export default function MMDPage({ draft, setDraft }: Props) {
 
     controls.target.set(0, 10, 0);
     controls.update();
+
+    if (import.meta.env.DEV) {
+      Object.assign(window, {
+        __mmdQaView: (azimuth: number, polar: number, targetY = 10, radius = 40) => {
+          controls.target.set(0, targetY, 0);
+          camera.position.copy(controls.target).add(
+            new THREE.Vector3().setFromSphericalCoords(radius, polar, azimuth)
+          );
+          controls.update();
+        },
+        __mmdQaProgress: (progress: number | null) => {
+          qaProgress = progress;
+        },
+        __mmdQaFeet: () => {
+          if (!mesh) return null;
+          return Object.fromEntries(["右足首", "右足首D", "左足首", "左足首D"].map((name) => [
+            name, mesh.skeleton.getBoneByName(name)?.getWorldPosition(new THREE.Vector3()).y,
+          ]));
+        },
+        __mmdQaKnees: () => {
+          if (!mesh) return null;
+          return Object.fromEntries(["右", "左"].map((prefix) => {
+            const wrist = mesh.skeleton.getBoneByName(`${prefix}手首`);
+            const knee = mesh.skeleton.getBoneByName(`${prefix}ひざD`);
+            const shoulder = mesh.skeleton.getBoneByName(`${prefix}腕`);
+            const elbow = mesh.skeleton.getBoneByName(`${prefix}ひじ`);
+            if (!wrist || !knee || !shoulder || !elbow) return [prefix, null];
+            const position = (bone: THREE.Bone) => bone.getWorldPosition(new THREE.Vector3());
+            const s = position(shoulder);
+            const e = position(elbow);
+            const w = position(wrist);
+            const k = position(knee);
+            return [prefix, {
+              wristKnee: w.distanceTo(k),
+              shoulderKnee: s.distanceTo(k),
+              armLength: s.distanceTo(e) + e.distanceTo(w),
+            }];
+          }));
+        },
+      });
+    }
 
     // =========================
     // Lights
@@ -264,7 +306,12 @@ export default function MMDPage({ draft, setDraft }: Props) {
         }
       } else {
         // Then apply your generated/manual motion.
-        playerRef.current?.update();
+        const player = playerRef.current;
+        player?.update(
+          qaProgress === null || !player.motion
+            ? undefined
+            : qaProgress * (player.motion.duration ?? 0)
+        );
       }
 
       // Then solve PMX grants/IK in MMD bone order after controller bones move.
@@ -326,6 +373,12 @@ export default function MMDPage({ draft, setDraft }: Props) {
       cancelAnimationFrame(animationFrameId);
 
       controls.dispose();
+      if (import.meta.env.DEV) {
+        delete (window as Window & { __mmdQaView?: unknown }).__mmdQaView;
+        delete (window as Window & { __mmdQaProgress?: unknown }).__mmdQaProgress;
+        delete (window as Window & { __mmdQaFeet?: unknown }).__mmdQaFeet;
+        delete (window as Window & { __mmdQaKnees?: unknown }).__mmdQaKnees;
+      }
 
       if (mesh) {
         scene.remove(mesh);

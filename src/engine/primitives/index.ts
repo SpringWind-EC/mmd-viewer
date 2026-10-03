@@ -60,6 +60,7 @@ export {
   runForwardPrimitive,
   stepPose,
   stepPositions,
+  stepPrimitive,
 } from "./lowerBody";
 export type { ContactHoldSide, HandKneeMode } from "./lowerBody";
 export {
