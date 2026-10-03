@@ -134,6 +134,14 @@ export default function MMDPage({ draft, setDraft }: Props) {
             name, mesh.skeleton.getBoneByName(name)?.getWorldPosition(new THREE.Vector3()).y,
           ]));
         },
+        __mmdQaBones: (names: string[]) => {
+          if (!mesh) return null;
+          return Object.fromEntries(names.map((name) => {
+            const bone = mesh.skeleton.getBoneByName(name);
+            const position = bone?.getWorldPosition(new THREE.Vector3());
+            return [name, position ? [position.x, position.y, position.z] : null];
+          }));
+        },
         __mmdQaKnees: () => {
           if (!mesh) return null;
           return Object.fromEntries(["右", "左"].map((prefix) => {
@@ -377,6 +385,7 @@ export default function MMDPage({ draft, setDraft }: Props) {
         delete (window as Window & { __mmdQaView?: unknown }).__mmdQaView;
         delete (window as Window & { __mmdQaProgress?: unknown }).__mmdQaProgress;
         delete (window as Window & { __mmdQaFeet?: unknown }).__mmdQaFeet;
+        delete (window as Window & { __mmdQaBones?: unknown }).__mmdQaBones;
         delete (window as Window & { __mmdQaKnees?: unknown }).__mmdQaKnees;
       }
 

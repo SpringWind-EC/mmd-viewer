@@ -70,9 +70,9 @@ export function primitiveForAction(action: MotionAction): MotionPrimitive {
     case "crouch":
       return crouchPrimitive(intensity);
     case "body_lean_forward":
-      return posePrimitive(bodyLeanForward(intensity));
+      return posePrimitive(bodyLeanForward(intensity, 0.78));
     case "body_lean_backward":
-      return posePrimitive(bodyLeanBackward(intensity));
+      return posePrimitive(bodyLeanBackward(intensity, 0.78));
     case "bow":
       return posePrimitive(
         mergeBones(bodyLeanForward("strong"), kneeBendPose("mild")),
@@ -83,11 +83,11 @@ export function primitiveForAction(action: MotionAction): MotionPrimitive {
     case "look_right":
     case "look_up":
     case "look_down":
-      return posePrimitive(headPose(action.type));
+      return posePrimitive(headPose(action.type, intensity));
     case "nod":
-      return nodPrimitive();
+      return nodPrimitive(intensity);
     case "shake_head":
-      return shakeHeadPrimitive();
+      return shakeHeadPrimitive(intensity);
     case "wave_right":
       return wavePrimitive("right", intensity);
     case "wave_left":
@@ -102,7 +102,7 @@ export function primitiveForAction(action: MotionAction): MotionPrimitive {
         })),
       };
     case "dance_sway":
-      return danceSwayPrimitive();
+      return danceSwayPrimitive(intensity);
     case "idle_breathing":
       return idleBreathingPrimitive();
     case "run_forward":

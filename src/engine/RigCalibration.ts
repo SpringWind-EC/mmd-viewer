@@ -331,9 +331,9 @@ export const RigCalibration = {
       strong: [0, -0.75, 0],
     } satisfies Record<Intensity, PositionArray>,
     centerForward: {
-      mild: [0, -0.15, -0.08],
-      medium: [0, -0.35, -0.16],
-      strong: [0, -0.55, -0.24],
+      mild: [0, 0, 0.12],
+      medium: [0, 0, 0.22],
+      strong: [0, 0, 0.34],
     } satisfies Record<Intensity, PositionArray>,
     rightFootBrace: {
       mild: [0.08, 0, 0.02],
@@ -351,8 +351,8 @@ export const RigCalibration = {
     lookLeft: [0, 0.16, 0, 0.987] as QuaternionArray,
     lookRight: [0, -0.16, 0, 0.987] as QuaternionArray,
     lookUp: [-0.1, 0, 0, 0.995] as QuaternionArray,
-    lookDown: [0.14, 0, 0, 0.99] as QuaternionArray,
-    nodDown: [0.16, 0, 0, 0.987] as QuaternionArray,
+    lookDown: [0.09, 0, 0, 0.996] as QuaternionArray,
+    nodDown: [0.11, 0, 0, 0.9939] as QuaternionArray,
     nodUp: [-0.08, 0, 0, 0.9968] as QuaternionArray,
   },
 } as const;

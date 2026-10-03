@@ -10,12 +10,10 @@ import {
   crouchPrimitive,
   fingerControlPose,
   type HandKneeMode,
-  footBracePositions,
   handOnKneePrimitive,
   handPose,
   headPose,
   mergeBones,
-  mergePositions,
   peaceSignPose,
   posePrimitive,
   q,
@@ -202,20 +200,23 @@ function orientEffectorPose(
 
   if (operator.effector === "head" || operator.effector === "gaze") {
     if (operator.facing === "left") {
-      return headPose("look_left");
+      return headPose("look_left", intensity);
     }
 
     if (operator.facing === "right") {
-      return headPose("look_right");
+      return headPose("look_right", intensity);
     }
 
     if (operator.facing === "up") {
-      return headPose("look_up");
+      return headPose("look_up", intensity);
     }
 
     if (operator.facing === "down") {
-      return headPose("look_down");
+      return headPose("look_down", intensity);
     }
+
+    // A front-facing head is an explicit pose so a later operator can recenter it.
+    return headPose("forward", intensity);
   }
 
   if (operator.effector === "right_hand") {
@@ -234,58 +235,58 @@ function orientEffectorPose(
 }
 
 function lookPose(target: MotionOperator & { type: "look" }) {
+  const intensity = target.intensity ?? "medium";
   if (target.target === "left") {
-    return headPose("look_left");
+    return headPose("look_left", intensity);
   }
 
   if (target.target === "right") {
-    return headPose("look_right");
+    return headPose("look_right", intensity);
   }
 
   if (target.target === "up") {
-    return headPose("look_up");
+    return headPose("look_up", intensity);
   }
 
   if (target.target === "down") {
-    return headPose("look_down");
+    return headPose("look_down", intensity);
   }
 
-  return {};
+  // The stage's neutral model direction faces its front camera/viewer.
+  return headPose("forward", intensity);
 }
 
 function shiftWeightPose(
   operator: MotionOperator & { type: "shift_weight" }
 ): { bones: BoneMap; positions?: PositionMap } {
   const intensity = operator.intensity ?? "medium";
+  const forward = RigCalibration.position.centerForward[intensity];
 
   if (operator.direction === "forward") {
     return {
-      bones: bodyLeanForward(intensity),
+      bones: bodyLeanForward(intensity, 0.45),
       positions: {
-        [Bones.center]: [...RigCalibration.position.centerForward[intensity]],
+        [Bones.center]: [...forward],
       },
     };
   }
 
   if (operator.direction === "back") {
     return {
-      bones: bodyLeanBackward(intensity),
-      positions: mergePositions(footBracePositions(intensity), {
-        [Bones.center]: [0, -0.06, 0.12],
-      }),
+      bones: bodyLeanBackward(intensity, 0.55),
+      positions: { [Bones.center]: [0, 0, -forward[2]] },
     };
   }
 
-  const amount = intensity === "strong" ? 0.22 : intensity === "mild" ? 0.08 : 0.14;
-  const sign = operator.direction === "right" ? 1 : -1;
+  const amount = intensity === "strong" ? 0.42 : intensity === "mild" ? 0.14 : 0.27;
+  const sign = operator.direction === "left" ? 1 : -1;
 
   return {
     bones: {
-      [Bones.lowerBody]: axisQuat(0, 0, -sign * amount * 0.24),
-      [Bones.upperBody]: axisQuat(0, 0, sign * amount * 0.32),
+      [Bones.upperBody]: axisQuat(0, 0, -sign * amount * 0.1),
     },
     positions: {
-      [Bones.center]: [sign * amount, -amount * 0.35, 0],
+      [Bones.center]: [sign * amount, 0, 0],
     },
   };
 }
