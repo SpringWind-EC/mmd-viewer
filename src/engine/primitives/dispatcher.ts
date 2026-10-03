@@ -1,9 +1,10 @@
 import type { MotionAction } from "../MotionPlan";
+import { Bones } from "../RigCalibration";
 import type { MotionPrimitive } from "./types";
 import { mergeBones, heldPosePrimitive, posePrimitive } from "./core";
 import { bothHandsPose, bothPeaceSignsPose, fingerControlPose, handPose, peaceSignPose } from "./hands";
 import { bodyLeanBackward, bodyLeanForward, headPose, leftArmForwardPose, rightArmForwardPose, twoArmsForward } from "./upperBody";
-import { fightingStancePose, fightingStancePositions, guardPose, punchPrimitive } from "./combat";
+import { fightingStancePrimitive, guardPose, punchPrimitive } from "./combat";
 import { crouchPositions, crouchPrimitive, kneeBendPose, runForwardPrimitive, stepPrimitive } from "./lowerBody";
 import { danceSwayPrimitive, idleBreathingPrimitive, nodPrimitive, photoPeacePrimitive, shakeHeadPrimitive, wavePrimitive } from "./gestures";
 
@@ -25,9 +26,9 @@ export function primitiveForAction(action: MotionAction): MotionPrimitive {
         mergeBones(leftArmForwardPose(intensity), handPose("left", "open"))
       );
     case "right_punch":
-      return punchPrimitive("right", intensity, "cross");
+      return punchPrimitive("right", intensity, "straight");
     case "left_punch":
-      return punchPrimitive("left", intensity, "cross");
+      return punchPrimitive("left", intensity, "straight");
     case "right_jab":
       return punchPrimitive("right", intensity, "jab");
     case "left_jab":
@@ -63,11 +64,7 @@ export function primitiveForAction(action: MotionAction): MotionPrimitive {
     case "guard":
       return posePrimitive(guardPose(intensity));
     case "fighting_stance":
-      return posePrimitive(
-        fightingStancePose(intensity),
-        true,
-        fightingStancePositions(intensity)
-      );
+      return fightingStancePrimitive(intensity);
     case "bend_knees":
       return posePrimitive(kneeBendPose(intensity), true, crouchPositions(intensity));
     case "crouch":
@@ -80,7 +77,7 @@ export function primitiveForAction(action: MotionAction): MotionPrimitive {
       return posePrimitive(
         mergeBones(bodyLeanForward("strong"), kneeBendPose("mild")),
         true,
-        crouchPositions("mild")
+        { [Bones.center]: [0, -0.48, 0] }
       );
     case "look_left":
     case "look_right":
