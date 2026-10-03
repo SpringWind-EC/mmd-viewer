@@ -118,8 +118,9 @@ export default function MMDPage({ draft, setDraft }: Props) {
 
     if (import.meta.env.DEV) {
       Object.assign(window, {
-        __mmdQaView: (azimuth: number, polar: number, targetY = 10, radius = 40) => {
-          controls.target.set(0, targetY, 0);
+        __mmdQaView: (azimuth: number, polar: number, targetY = 10, radius = 40, targetX = 0, targetZ = 0) => {
+          controls.minDistance = Math.min(controls.minDistance, radius);
+          controls.target.set(targetX, targetY, targetZ);
           camera.position.copy(controls.target).add(
             new THREE.Vector3().setFromSphericalCoords(radius, polar, azimuth)
           );

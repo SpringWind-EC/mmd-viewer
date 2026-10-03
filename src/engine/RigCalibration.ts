@@ -262,12 +262,12 @@ export const RigCalibration = {
     thumbGuardLeft1: [-0.2, 0, 0, 0.98],
     thumbGuardLeft2: [-0.2, 0, 0, 0.98],
 
-    thumbFistRight0: [0, 0, 0, 1],
-    thumbFistRight1: [0.3, 0, 0, 1],
-    thumbFistRight2: [0.3, 0, 0, 1],
-    thumbFistLeft0: [0, 0, 0, 1],
-    thumbFistLeft1: [0.3, 0, 0, 1],
-    thumbFistLeft2: [0.3, 0, 0, 1],
+    thumbFistRight0: [0, 0, -0.05, 0.9987],
+    thumbFistRight1: [0.389, -0.019, 0.046, 0.92],
+    thumbFistRight2: [0.479, 0, 0, 0.878],
+    thumbFistLeft0: [0, 0, 0.05, 0.9987],
+    thumbFistLeft1: [0.389, 0.019, -0.046, 0.92],
+    thumbFistLeft2: [0.479, 0, 0, 0.878],
   },
 
   torso: {

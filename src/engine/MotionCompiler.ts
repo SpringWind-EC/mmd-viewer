@@ -419,6 +419,20 @@ function operatorContext(
 
       return "standing";
     },
+    handOscillationHasDrivenElbow: (operator) => {
+      const time = operatorTime(operator, duration);
+      return plan.operators.some((candidate) => {
+        if (candidate === operator) return false;
+        if (candidate.type !== "reach" && candidate.type !== "move_effector") return false;
+        if (candidate.effector !== operator.effector) return false;
+        const candidateTime = operatorTime(candidate, duration);
+        if (Math.max(time.startTime, candidateTime.startTime) >= Math.min(time.endTime, candidateTime.endTime) - epsilon) return false;
+        if (candidate.type === "reach") return true;
+        return [
+          "forward", "front_of_face", "front_of_chest", "chest_center", "right_knee", "left_knee", "knees",
+        ].includes(candidate.region);
+      });
+    },
   };
 }
 

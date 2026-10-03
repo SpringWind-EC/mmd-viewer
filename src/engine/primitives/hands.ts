@@ -128,7 +128,7 @@ function jointValue(
   joint: FingerJointName,
   index: number
 ) {
-  const fallback = clamp(action.curl ?? 1, 0, 1);
+  const fallback = clamp(action.curl ?? 0, 0, 1);
 
   if (Array.isArray(action.joints)) {
     return clamp(action.joints[index] ?? fallback, 0, 1);
@@ -232,13 +232,13 @@ function fingerJointRotation(
   const curlRotation = nlerp(neutral, fingerCurlTarget(side, finger, jointIndex), curl);
   const spreadRotation =
     jointIndex === 0
-      ? axisQuat(0, sign * spread * 0.08, sign * fingerSpreadDirection(finger) * spread * 0.16)
+      ? finger === "thumb"
+        ? axisQuat(0, sign * spread * 0.08, sign * spread * 0.08)
+        : axisQuat(0, 0, sign * fingerSpreadDirection(finger) * spread * 0.13)
       : q(neutral);
-  const twistRotation = axisQuat(
-    0,
-    sign * twist * (jointIndex === 0 ? 0.08 : 0.035),
-    sign * twist * (jointIndex === 0 ? 0.08 : 0.025)
-  );
+  const twistRotation = jointIndex === 0
+    ? axisQuat(0, sign * twist * 0.075, sign * twist * 0.025)
+    : q(neutral);
 
   return multiplyQuat(multiplyQuat(curlRotation, spreadRotation), twistRotation);
 }

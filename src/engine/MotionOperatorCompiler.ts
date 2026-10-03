@@ -40,6 +40,9 @@ export type MotionOperatorContext = {
   handKneeModeForOperator?: (
     operator: MotionOperator & { type: "move_effector" }
   ) => HandKneeMode;
+  handOscillationHasDrivenElbow?: (
+    operator: MotionOperator & { type: "oscillate" }
+  ) => boolean;
 };
 
 function sideList(side: MotionSide): Array<"right" | "left"> {
@@ -312,7 +315,8 @@ function oscillationBone(operator: MotionOperator & { type: "oscillate" }) {
 }
 
 function oscillationPrimitive(
-  operator: MotionOperator & { type: "oscillate" }
+  operator: MotionOperator & { type: "oscillate" },
+  hasDrivenElbow = false
 ): MotionPrimitive {
   const bone = oscillationBone(operator);
 
@@ -322,9 +326,34 @@ function oscillationPrimitive(
 
   const cycles = Math.max(1, Math.min(5, Math.round(operator.cycles ?? 2)));
   const amplitude = Math.max(0, Math.min(1, operator.amplitude ?? 0.25));
+  const handSide = operator.effector === "right_hand" ? "right" : operator.effector === "left_hand" ? "left" : undefined;
   const frames = Array.from({ length: cycles * 2 + 1 }, (_, index) => {
     const progress = index / (cycles * 2);
     const direction = index % 2 === 0 ? 1 : -1;
+    if (handSide) {
+      const isRight = handSide === "right";
+      const wrist = isRight ? Bones.rightWrist : Bones.leftWrist;
+      const elbow = isRight ? Bones.rightElbow : Bones.leftElbow;
+      const handTwist = isRight ? Bones.rightHandTwist : Bones.leftHandTwist;
+      const sideSign = isRight ? 1 : -1;
+      const wave = amplitude * direction;
+      const wristRotation = operator.axis === "vertical"
+        ? axisQuat(wave * 0.12, 0, 0)
+        : operator.axis === "twist"
+          ? axisQuat(0, sideSign * wave * 0.08, 0)
+          : axisQuat(0, 0, sideSign * wave * 0.12);
+      return {
+        progress,
+        bones: operator.axis === "twist"
+          ? { [wrist]: wristRotation, [handTwist]: axisQuat(0, sideSign * wave * 0.08, 0) }
+          : hasDrivenElbow
+            ? { [wrist]: wristRotation, [handTwist]: operator.axis === "vertical"
+                ? axisQuat(wave * 0.06, 0, 0)
+                : axisQuat(0, 0, sideSign * wave * 0.06) }
+            : { [wrist]: wristRotation, [elbow]: axisQuat(-amplitude * (0.1 + direction * 0.04), 0, 0) },
+      };
+    }
+
     const amount = amplitude * 0.4 * direction;
     const rotation =
       operator.axis === "vertical"
@@ -461,7 +490,7 @@ export function compileMotionOperator(
       };
     case "oscillate":
       return {
-        primitive: oscillationPrimitive(operator),
+        primitive: oscillationPrimitive(operator, context.handOscillationHasDrivenElbow?.(operator)),
         priority: 45,
       };
     case "shift_weight": {
