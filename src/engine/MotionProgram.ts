@@ -36,6 +36,77 @@ export type FacingTarget =
 
 export type MotionOperator =
   | {
+      // Model-space offsets in MMD units. Move the pelvis while planted foot IK
+      // targets remain in place; the leg IK chain supplies the knee bend.
+      type: "place_body";
+      offset: { right: number; up: number; forward: number };
+      startTime?: number;
+      endTime?: number;
+    }
+  | {
+      // Independent foot target, relative to its rest position in MMD units.
+      type: "place_foot";
+      side: "right" | "left";
+      offset: { right: number; up: number; forward: number };
+      startTime?: number;
+      endTime?: number;
+    }
+  | {
+      // Bounded torso rotation in degrees, relative to the pelvis.
+      type: "pose_torso";
+      pitch?: number;
+      yaw?: number;
+      roll?: number;
+      startTime?: number;
+      endTime?: number;
+    }
+  | {
+      // Turn or tilt the whole body above the planted feet.
+      type: "pose_waist";
+      pitch?: number;
+      yaw?: number;
+      roll?: number;
+      startTime?: number;
+      endTime?: number;
+    }
+  | {
+      // Combined neck and head orientation in degrees.
+      type: "pose_head";
+      pitch?: number;
+      yaw?: number;
+      roll?: number;
+      startTime?: number;
+      endTime?: number;
+    }
+  | {
+      // Elbow flex with a lowered or otherwise un-targeted arm.
+      type: "bend_elbow";
+      side: "right" | "left";
+      flex: number;
+      startTime?: number;
+      endTime?: number;
+    }
+  | {
+      // Independent upper-arm sweep, side lift, and elbow flex in degrees.
+      // Use when the arm's shape matters more than an exact hand target.
+      type: "pose_arm";
+      side: "right" | "left";
+      forward?: number;
+      outward?: number;
+      flex?: number;
+      startTime?: number;
+      endTime?: number;
+    }
+  | {
+      // Local wrist hinge and forearm-axis turn in degrees.
+      type: "pose_wrist";
+      side: "right" | "left";
+      bend?: number;
+      twist?: number;
+      startTime?: number;
+      endTime?: number;
+    }
+  | {
       type: "reach";
       effector: "right_hand" | "left_hand";
       anchor: "head" | "chest" | "hips";

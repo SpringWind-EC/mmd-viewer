@@ -39,6 +39,14 @@ Valid operator types:
 - look
 - oscillate
 - shift_weight
+- place_body
+- place_foot
+- pose_torso
+- pose_waist
+- pose_head
+- bend_elbow
+- pose_arm
+- pose_wrist
 
 Valid effectors:
 - head
@@ -89,6 +97,18 @@ Valid weight directions:
 - right
 - down
 
+Spatial body controls (use for composed poses, not a named animation):
+- place_body moves the pelvis/center in model-space MMD units. offset.right is toward the character's right, offset.up is vertical, and offset.forward is toward the character's front. Bounds: right -1..1, up -5.2..1, forward -2..2. Lowering the center while leaving the feet planted bends the knees through foot IK. For a seated pose, lower the center around 4 to 5 units and move it backward around 1 to 2 units; adjust feet separately as needed. An invisible chair or support is only implied.
+- place_foot moves one foot IK target from its rest position in the same MMD units. side is left or right. Bounds: right -1..1, up 0..1, forward -1.5..1.5. Keep planted feet at zero offset; move a foot only when requested or when needed for balance. Left and right foot targets can have different offsets. Use modest offsets, such as up 0.6 and forward 0.5 for a raised foot. Never use D leg bone rotations alongside these foot targets.
+- pose_torso bends the upper body relative to the pelvis. pitch is forward-positive degrees (-25..35), yaw is turn-toward-character-right-positive degrees (-35..35), and roll is lean-toward-character-right-positive degrees (-20..20). Supply only the axes needed. This combines with place_body, independent hand targets, hand shapes, and head look.
+- pose_waist rotates the trunk and hips together above the foot IK targets. Use for a modest whole-body pivot or tilt while the feet stay planted. It has pitch -5..5, yaw -10..10, and roll -4..4 degrees, with the same axis conventions as pose_torso. Use pose_torso in addition when the upper body needs a different angle from the hips.
+- pose_head combines looking up/down, left/right, and ear-to-shoulder tilt in one bounded head/neck movement. pitch is forward/down-positive (-15..15), yaw is character-right-positive (-20..20), roll is right-tilt-positive (-12..12). Prefer pose_head for compound head directions; use look for simple cardinal directions. Do not overlap pose_head and look on the same time span.
+- bend_elbow independently flexes one elbow from 0 to 110 degrees while that arm has no hand target. It keeps the upper arm at rest and hinges the forearm forward without twisting it. Use it for asymmetric arm bends or hands held forward near the waist. Choose side left or right. Do not overlap bend_elbow with reach or move_effector for the same arm: the hand target already determines that elbow.
+- pose_arm independently shapes one entire arm. Choose side left or right. forward (-15..85 degrees) sweeps the upper arm toward the character's front, outward (0..80 degrees) lifts it sideways, and flex (0..110 degrees) bends the elbow forward around its anatomical hinge. Positive forward plus outward must be at most 85 degrees; when their sum is above 60, flex must be at most 75 degrees to avoid folding the hand across the chest. Omit unused axes. Use this when an arm's silhouette or gesture matters more than exact fingertip placement; combine with hand_shape and pose_wrist for detail. Do not overlap pose_arm with reach, move_effector, or bend_elbow on that side.
+- pose_wrist controls one wrist while its arm is independently posed or reaching. Choose side left or right. bend (-25..25 degrees) hinges the hand toward/away from the front; twist (-40..40 degrees) turns the forearm/hand around its length, shared between the twist bone and wrist. Use small angles for palm presentation and larger ones only when the requested gesture requires them. It may combine with pose_arm, reach, hand_shape, and finger. Do not overlap it with orient_effector or oscillate on the same hand.
+- Compose complex requests from these independent controls. Arrange startTime/endTime so the center and legs settle before precise hand gestures. Keep overlapping operators on different parts when they should hold together. Do not invent a fixed named animation for the whole request.
+- A requested grasp can be represented by a hand reach near the described point plus hand_shape fist or finger curl. There is no object or contact physics, so do not imply that a string, chair, or other prop is physically attached.
+
 For reach, use only right_hand or left_hand. Choose an anchor of head, chest, or hips.
 The offset has right, up, and forward numeric fields, each between -1 and 1.
 Offsets are fractions of that model's arm length; positive right means the character's right,
@@ -98,13 +118,11 @@ body-relative point. For a right hand near the right cheek, use head with
 offset {"right": 0.18, "up": -0.08, "forward": 0.18}.
 For a left hand near the left cheek, negate the right offset.
 Do not use reach for feet, steps, or arbitrary world-space targets.
-Keep reach targets in front of the body and on the same side as the chosen hand.
-For head reaches use forward at least 0.12 and right at least 0.08 for the right hand
-(or at most -0.08 for the left hand). For chest or hips use forward at least 0.22.
+Keep reach targets on the same side as the chosen hand. For head reaches use forward at least 0.12 and right at least 0.08 for the right hand (or at most -0.08 for the left hand). For chest or hips use forward at least 0.22. A clearly lateral target may use forward as low as -0.08 when the same-side right magnitude is at least 0.4. This supports a hand extended to the side or slightly behind the shoulder, but keep it clear of the torso.
 Do not place a wrist inside the head or torso.
 
 Rules:
-- Use one to six operators.
+- Use one to twelve operators; complex full-body poses may need more than six.
 - Use the smallest operator set that explains the request.
 - Treat operators like Blender/MMD controller edits: moving a parent body part or controller automatically carries child bones through the skeleton hierarchy.
 - Do not add detail operators just to make descendants follow a parent; use hand_shape, finger, look, or orient_effector only when those local details are explicitly part of the requested pose.

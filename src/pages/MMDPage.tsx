@@ -246,6 +246,7 @@ export default function MMDPage({ draft, setDraft }: Props) {
         const pmxBones = mesh.geometry.userData.MMD?.bones;
 
         const helperAny = helper as any;
+        
         if (
           mesh.geometry.userData.MMD?.format === "pmx" &&
           Array.isArray(pmxBones) &&

@@ -1,4 +1,5 @@
 import type { MotionAction } from "./MotionPlan";
+import * as THREE from "three";
 import type { MotionOperator, MotionSide } from "./MotionProgram";
 import { Bones, RigCalibration, type Intensity } from "./RigCalibration";
 import {
@@ -13,7 +14,9 @@ import {
   handOnKneePrimitive,
   handPose,
   headPose,
+  kneeBendPose,
   mergeBones,
+  nlerp,
   peaceSignPose,
   posePrimitive,
   q,
@@ -32,6 +35,7 @@ export type CompiledOperator = {
 };
 
 export type MotionOperatorContext = {
+  bodyHasKneeSeedForFoot?: (operator: MotionOperator & { type: "place_foot" }) => boolean;
   crouchIntensity?: Intensity;
   crouchContactHoldSide?: ContactHoldSide;
   guardFrontChestRoleForOperator?: (
@@ -47,6 +51,48 @@ export type MotionOperatorContext = {
 
 function sideList(side: MotionSide): Array<"right" | "left"> {
   return side === "both" ? ["right", "left"] : [side];
+}
+
+function bodyAngleQuat(pitch = 0, yaw = 0, roll = 0, fraction = 1) {
+  const toRadians = THREE.MathUtils.degToRad;
+  const rotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(
+    toRadians(pitch * fraction),
+    -toRadians(yaw * fraction),
+    toRadians(roll * fraction),
+    "XYZ"
+  ));
+  return [rotation.x, rotation.y, rotation.z, rotation.w] as [number, number, number, number];
+}
+
+function armJointAxis(side: "right" | "left") {
+  // PMX upper arms slope away from the torso in the bind pose. A hinge
+  // perpendicular to that slope raises the arm forward without axial twist.
+  return new THREE.Vector3(-0.6745, side === "right" ? 0.738 : -0.738, 0).normalize();
+}
+
+function forearmHingeAxis(side: "right" | "left") {
+  return new THREE.Vector3(-0.6201, side === "right" ? 0.7845 : -0.7845, 0).normalize();
+}
+
+function forearmTwistAxis(side: "right" | "left") {
+  return new THREE.Vector3(side === "right" ? -0.7845 : 0.7845, -0.6201, 0).normalize();
+}
+
+function axisAngle(axis: THREE.Vector3, degrees: number) {
+  const rotation = new THREE.Quaternion().setFromAxisAngle(axis, THREE.MathUtils.degToRad(degrees));
+  return [rotation.x, rotation.y, rotation.z, rotation.w] as [number, number, number, number];
+}
+
+function armSweepRotation(side: "right" | "left", forward: number, outward: number, fraction: number) {
+  const forwardRotation = new THREE.Quaternion().setFromAxisAngle(
+    armJointAxis(side), THREE.MathUtils.degToRad(forward * fraction)
+  );
+  const outwardRotation = new THREE.Quaternion().setFromAxisAngle(
+    new THREE.Vector3(0, 0, side === "right" ? -1 : 1),
+    THREE.MathUtils.degToRad(outward * fraction)
+  );
+  const rotation = outwardRotation.multiply(forwardRotation);
+  return [rotation.x, rotation.y, rotation.z, rotation.w] as [number, number, number, number];
 }
 
 function handShapePose(
@@ -203,19 +249,19 @@ function orientEffectorPose(
 
   if (operator.effector === "head" || operator.effector === "gaze") {
     if (operator.facing === "left") {
-      return headPose("look_left", intensity);
+      return mergeBones({ [Bones.neck]: [0, 0, 0, 1] }, headPose("look_left", intensity));
     }
 
     if (operator.facing === "right") {
-      return headPose("look_right", intensity);
+      return mergeBones({ [Bones.neck]: [0, 0, 0, 1] }, headPose("look_right", intensity));
     }
 
     if (operator.facing === "up") {
-      return headPose("look_up", intensity);
+      return mergeBones({ [Bones.neck]: [0, 0, 0, 1] }, headPose("look_up", intensity));
     }
 
     if (operator.facing === "down") {
-      return headPose("look_down", intensity);
+      return mergeBones({ [Bones.neck]: [0, 0, 0, 1] }, headPose("look_down", intensity));
     }
 
     // A front-facing head is an explicit pose so a later operator can recenter it.
@@ -240,19 +286,19 @@ function orientEffectorPose(
 function lookPose(target: MotionOperator & { type: "look" }) {
   const intensity = target.intensity ?? "medium";
   if (target.target === "left") {
-    return headPose("look_left", intensity);
+    return mergeBones({ [Bones.neck]: [0, 0, 0, 1] }, headPose("look_left", intensity));
   }
 
   if (target.target === "right") {
-    return headPose("look_right", intensity);
+    return mergeBones({ [Bones.neck]: [0, 0, 0, 1] }, headPose("look_right", intensity));
   }
 
   if (target.target === "up") {
-    return headPose("look_up", intensity);
+    return mergeBones({ [Bones.neck]: [0, 0, 0, 1] }, headPose("look_up", intensity));
   }
 
   if (target.target === "down") {
-    return headPose("look_down", intensity);
+    return mergeBones({ [Bones.neck]: [0, 0, 0, 1] }, headPose("look_down", intensity));
   }
 
   // The stage's neutral model direction faces its front camera/viewer.
@@ -385,6 +431,131 @@ export function compileMotionOperator(
   context: MotionOperatorContext = {}
 ): CompiledOperator {
   switch (operator.type) {
+    case "place_body": {
+      if (operator.offset.up >= 0) {
+        return {
+          primitive: posePrimitive({}, true, {
+            [Bones.center]: [-operator.offset.right, operator.offset.up, operator.offset.forward],
+          }),
+          priority: 5,
+        };
+      }
+      // Use the rig-calibrated center descent and knee seed as a continuous
+      // curve. The requested spatial offset still determines the final pose.
+      const descent = crouchPrimitive("strong");
+      const firstY = descent.frames[0].positions?.[Bones.center]?.[1] ?? 0;
+      const lastY = descent.frames.at(-1)?.positions?.[Bones.center]?.[1] ?? -3.48;
+      const bend = Math.min(1, -operator.offset.up / 3.2);
+      return {
+        primitive: {
+          holdFinalPose: true,
+          frames: descent.frames.map((frame) => {
+            const y = frame.positions?.[Bones.center]?.[1] ?? 0;
+            const fraction = THREE.MathUtils.clamp((y - firstY) / (lastY - firstY), 0, 1);
+            return {
+              progress: frame.progress,
+              bones: Object.fromEntries(Object.entries(frame.bones).map(([name, rotation]) => [
+                name, nlerp([0, 0, 0, 1], rotation, bend),
+              ])),
+              positions: {
+                [Bones.center]: [
+                  -operator.offset.right * fraction,
+                  operator.offset.up * fraction,
+                  operator.offset.forward * fraction,
+                ] as [number, number, number],
+              },
+            };
+          }),
+        },
+        priority: 5,
+      };
+    }
+    case "place_foot": {
+      const foot = operator.side === "right" ? Bones.rightFootIk : Bones.leftFootIk;
+      const toe = operator.side === "right" ? Bones.rightToeIk : Bones.leftToeIk;
+      const offset: [number, number, number] = [
+        -operator.offset.right, operator.offset.up, operator.offset.forward,
+      ];
+      const kneeSeed = kneeBendPose("mild");
+      const leg = operator.side === "right" ? Bones.rightLeg : Bones.leftLeg;
+      const knee = operator.side === "right" ? Bones.rightKnee : Bones.leftKnee;
+      return {
+        primitive: posePrimitive(operator.offset.up > 0.05 && !context.bodyHasKneeSeedForFoot?.(operator)
+          ? { [leg]: kneeSeed[leg], [knee]: kneeSeed[knee] }
+          : {}, true, { [foot]: offset, [toe]: offset }),
+        priority: 6,
+      };
+    }
+    case "pose_torso": {
+      return {
+        primitive: posePrimitive({
+          [Bones.upperBody1]: bodyAngleQuat(operator.pitch, operator.yaw, operator.roll, 0.65),
+          [Bones.upperBody2]: bodyAngleQuat(operator.pitch, operator.yaw, operator.roll, 0.35),
+        }),
+        priority: 12,
+      };
+    }
+    case "pose_waist":
+      return {
+        primitive: posePrimitive({
+          [Bones.waist]: bodyAngleQuat(operator.pitch, operator.yaw, operator.roll),
+        }),
+        priority: 8,
+      };
+    case "pose_head":
+      return {
+        primitive: posePrimitive({
+          [Bones.neck]: bodyAngleQuat(operator.pitch, operator.yaw, operator.roll, 0.3),
+          [Bones.head]: bodyAngleQuat(operator.pitch, operator.yaw, operator.roll, 0.7),
+        }),
+        priority: 15,
+      };
+    case "bend_elbow": {
+      const elbow = operator.side === "right" ? Bones.rightElbow : Bones.leftElbow;
+      const arm = operator.side === "right" ? Bones.rightArm : Bones.leftArm;
+      const shoulder = operator.side === "right" ? Bones.rightShoulder : Bones.leftShoulder;
+      // The forearms slope outward and down in the bind pose. Rotating around
+      // X would also rotate around that slope, visibly twisting the forearm.
+      // These mirrored hinge axes are perpendicular to each rest forearm and
+      // bring the hand forward as the elbow flexes.
+      return {
+        primitive: posePrimitive({
+          [shoulder]: [0, 0, 0, 1],
+          [arm]: [0, 0, 0, 1],
+          [elbow]: axisAngle(forearmHingeAxis(operator.side), operator.flex),
+        }),
+        priority: 20,
+      };
+    }
+    case "pose_arm": {
+      const isRight = operator.side === "right";
+      return {
+        primitive: posePrimitive({
+          [isRight ? Bones.rightShoulder : Bones.leftShoulder]:
+            armSweepRotation(operator.side, operator.forward ?? 0, operator.outward ?? 0, 0.12),
+          [isRight ? Bones.rightArm : Bones.leftArm]:
+            armSweepRotation(operator.side, operator.forward ?? 0, operator.outward ?? 0, 0.88),
+          [isRight ? Bones.rightElbow : Bones.leftElbow]:
+            axisAngle(forearmHingeAxis(operator.side), operator.flex ?? 0),
+        }),
+        priority: 20,
+      };
+    }
+    case "pose_wrist": {
+      const isRight = operator.side === "right";
+      const twistAxis = forearmTwistAxis(operator.side);
+      const wristRotation = new THREE.Quaternion()
+        .setFromAxisAngle(forearmHingeAxis(operator.side), THREE.MathUtils.degToRad(operator.bend ?? 0))
+        .multiply(new THREE.Quaternion().setFromAxisAngle(twistAxis, THREE.MathUtils.degToRad((operator.twist ?? 0) * 0.3)));
+      return {
+        primitive: posePrimitive({
+          [isRight ? Bones.rightHandTwist : Bones.leftHandTwist]: axisAngle(twistAxis, (operator.twist ?? 0) * 0.7),
+          [isRight ? Bones.rightWrist : Bones.leftWrist]:
+            [wristRotation.x, wristRotation.y, wristRotation.z, wristRotation.w],
+        }),
+        priority: 25,
+      };
+    }
     case "move_effector": {
       const guardFrontChestRole =
         context.guardFrontChestRoleForOperator?.(operator);
@@ -461,7 +632,7 @@ export function compileMotionOperator(
     case "orient_effector":
       return {
         primitive: posePrimitive(orientEffectorPose(operator)),
-        priority: 25,
+        priority: operator.effector === "head" || operator.effector === "gaze" ? 15 : 25,
       };
     case "hand_shape":
       return {

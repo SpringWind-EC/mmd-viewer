@@ -20,11 +20,11 @@ export const motionProgramResponseSchema: ResponseSchema = {
     operators: {
       type: SchemaType.ARRAY,
       minItems: 1,
-      maxItems: 6,
+      maxItems: 12,
       items: {
         type: SchemaType.OBJECT,
         properties: {
-          type: choice(["reach", "move_effector", "orient_effector", "hand_shape", "finger", "look", "oscillate", "shift_weight"]),
+          type: choice(["place_body", "place_foot", "pose_torso", "pose_waist", "pose_head", "bend_elbow", "pose_arm", "pose_wrist", "reach", "move_effector", "orient_effector", "hand_shape", "finger", "look", "oscillate", "shift_weight"]),
           effector: choice(["head", "gaze", "torso", "right_hand", "left_hand"]),
           anchor: choice(["head", "chest", "hips"]),
           offset: {
@@ -32,6 +32,13 @@ export const motionProgramResponseSchema: ResponseSchema = {
             properties: { right: number, up: number, forward: number },
             required: ["right", "up", "forward"],
           },
+          pitch: number,
+          yaw: number,
+          roll: number,
+          flex: number,
+          forward: number,
+          outward: number,
+          bend: number,
           region: choice(["forward", "front_of_face", "front_of_chest", "chest_center", "above_head", "right_side_of_head", "left_side_of_head", "right_knee", "left_knee", "knees"]),
           intensity: choice(["mild", "medium", "strong"]),
           facing: choice(["viewer", "forward", "left", "right", "up", "down"]),

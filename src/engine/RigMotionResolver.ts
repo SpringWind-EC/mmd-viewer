@@ -37,9 +37,10 @@ export function resolveReach(mesh: THREE.SkinnedMesh, operator: Reach): MotionPr
     mesh.updateMatrixWorld(true);
 
     const side = operator.effector === "right_hand" ? 1 : -1;
-    const minForward = operator.anchor === "head" ? 0.12 : 0.22;
+    const lateralTarget = side * operator.offset.right >= 0.4;
+    const minForward = lateralTarget ? -0.08 : operator.anchor === "head" ? 0.12 : 0.22;
     if (side * operator.offset.right < 0.08 || operator.offset.forward < minForward) {
-      throw new Error("This reach needs a target in front of the same-side shoulder.");
+      throw new Error("This reach needs a target in front of or clearly outside the same-side shoulder.");
     }
     if (operator.anchor === "head" &&
         Math.hypot(operator.offset.right, operator.offset.up, operator.offset.forward) < 0.23) {
@@ -90,8 +91,16 @@ export function resolveReach(mesh: THREE.SkinnedMesh, operator: Reach): MotionPr
     }
 
     const direction = toTarget.normalize();
-    const pole = new THREE.Vector3(-side, -0.45, 0.8)
-      .applyQuaternion(mesh.getWorldQuaternion(new THREE.Quaternion()));
+    // A side target close to the chest can be reached with the wrist low, but
+    // the usual front/outward pole lifts the elbow to shoulder height. Keep
+    // that elbow near its rest direction for lateral reaches instead.
+    const modelRotation = mesh.getWorldQuaternion(new THREE.Quaternion());
+    const pole = lateralTarget && operator.anchor !== "head" && operator.offset.forward < 0.12
+      ? elbowPosition.clone().sub(armPosition).add(
+          new THREE.Vector3(0, -0.2 * armLength, 0).applyQuaternion(modelRotation)
+        )
+      : new THREE.Vector3(-side, -0.45, 0.8)
+          .applyQuaternion(modelRotation);
     pole.addScaledVector(direction, -pole.dot(direction));
     if (pole.lengthSq() < 0.001) {
       throw new Error("This reach has no stable elbow direction.");

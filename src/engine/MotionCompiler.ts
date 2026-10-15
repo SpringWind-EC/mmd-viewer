@@ -264,6 +264,44 @@ function operatorTime(
   return { startTime, endTime };
 }
 
+function assertCompatibleOperators(program: MotionProgram, duration: number) {
+  program.operators.forEach((operator, index) => {
+    if (operator.type === "pose_arm") {
+      const lift = Math.max(0, operator.forward ?? 0) + (operator.outward ?? 0);
+      if (lift > 85 || (lift > 60 && (operator.flex ?? 0) > 75)) {
+        throw new Error("Combined arm lift must stay within 85 degrees; above 60 degrees, elbow flex is limited to 75 degrees.");
+      }
+    }
+    if (operator.type !== "bend_elbow" && operator.type !== "pose_arm" &&
+        operator.type !== "pose_wrist" && operator.type !== "pose_head") return;
+    const time = operatorTime(operator, duration);
+    const conflict = program.operators.find((other, otherIndex) => {
+      if (otherIndex === index) return false;
+      const otherTime = operatorTime(other, duration);
+      if (Math.max(time.startTime, otherTime.startTime) >= Math.min(time.endTime, otherTime.endTime)) return false;
+      if (operator.type === "bend_elbow" || operator.type === "pose_arm") {
+        return ((other.type === "reach" || other.type === "move_effector") &&
+          other.effector === `${operator.side}_hand`) ||
+          ((other.type === "bend_elbow" || other.type === "pose_arm") && other.side === operator.side);
+      }
+      if (operator.type === "pose_wrist") {
+        return ((other.type === "orient_effector" || other.type === "oscillate") &&
+          other.effector === `${operator.side}_hand`) ||
+          (other.type === "pose_wrist" && other.side === operator.side);
+      }
+      return other.type === "look" ||
+        (other.type === "orient_effector" && (other.effector === "head" || other.effector === "gaze"));
+    });
+    if (conflict) {
+      throw new Error(operator.type === "pose_head"
+        ? "pose_head cannot overlap look or head orientation; combine the angles in pose_head."
+        : operator.type === "pose_wrist"
+          ? `pose_wrist on ${operator.side} cannot overlap another wrist orientation.`
+          : `Arm pose on ${operator.side} cannot overlap another arm pose or hand target.`);
+    }
+  });
+}
+
 // Detect operators where a hand is intended to contact a knee.
 //
 // This is used to coordinate hand-on-knee poses with crouching/down-shift body
@@ -389,6 +427,14 @@ function operatorContext(
     : [];
 
   return {
+    bodyHasKneeSeedForFoot: (operator) => {
+      const footTime = operatorTime(operator, duration);
+      return plan.operators.some((candidate) => {
+        if (candidate.type !== "place_body" || candidate.offset.up >= 0) return false;
+        const bodyTime = operatorTime(candidate, duration);
+        return Math.max(footTime.startTime, bodyTime.startTime) < Math.min(footTime.endTime, bodyTime.endTime);
+      });
+    },
     crouchIntensity: downShift?.intensity,
     crouchContactHoldSide: combineContactSides(contactHoldSides),
     guardFrontChestRoleForOperator: (operator) => {
@@ -468,6 +514,42 @@ function composeSamples(
     );
 }
 
+// For simple target poses, begin a later command at the pose the earlier
+// operators already reached. This keeps sequences such as look-left then
+// look-up, or reach then bend-elbow, continuous at their boundary.
+function seedOperatorTransitions(clips: ActionClip[], holdAfterEnd: boolean) {
+  const ordered = [...clips].sort((a, b) => a.startTime - b.startTime);
+  const seeded: ActionClip[] = [];
+  for (const clip of ordered) {
+    const frames = clip.primitive.frames;
+    if (clip.startTime <= 0 || frames.length !== 3 || frames[0].progress !== 0 ||
+        Object.keys(frames[0].bones).length > 0 || frames[0].positions ||
+        JSON.stringify(frames[1].bones) !== JSON.stringify(frames[2].bones) ||
+        JSON.stringify(frames[1].positions) !== JSON.stringify(frames[2].positions)) {
+      seeded.push(clip);
+      continue;
+    }
+    const prior = composeSamples(seeded.map((previous) => ({
+      ...sampleClipAtTime(previous, clip.startTime, holdAfterEnd),
+      priority: previous.priority,
+    })));
+    const final = frames[2];
+    const bones = Object.fromEntries(Object.keys(final.bones)
+      .filter((name) => prior.bones[name])
+      .map((name) => [name, prior.bones[name]])) as BoneMap;
+    const positions = Object.fromEntries(Object.keys(final.positions ?? {})
+      .filter((name) => prior.positions[name])
+      .map((name) => [name, prior.positions[name]])) as PositionMap;
+    seeded.push(Object.keys(bones).length || Object.keys(positions).length
+      ? { ...clip, primitive: {
+          ...clip.primitive,
+          frames: [{ ...frames[0], bones, positions: Object.keys(positions).length ? positions : undefined }, ...frames.slice(1)],
+        } }
+      : clip);
+  }
+  return seeded;
+}
+
 // Main compiler entry point.
 //
 // Input:
@@ -482,19 +564,22 @@ export function compileMotionPlan(plan: MotionPlan | MotionProgram, mesh?: Skinn
     0.5,
     MAX_DURATION
   );
+  if (isMotionProgram(plan)) assertCompatibleOperators(plan, duration);
   const context = operatorContext(plan, duration);
-
-  const clips = linkClipTimeline(
-    isMotionProgram(plan)
-      ? plan.operators.map((operator) =>
-          buildOperatorClip(operator, duration, context, mesh)
-        )
-      : (plan.actions && plan.actions.length > 0
-          ? plan.actions
-          : [{ type: "neutral" as const }]
-        ).map((action) => buildClip(action, duration))
-  );
   const holdAfterEnd = plan.holdFinalPose !== false;
+
+  // Operators address independent body parts. A later hand gesture must not
+  // cancel an earlier held pelvis, foot, or torso pose. New operators affecting
+  // the same bone still take precedence through composition order.
+  const clips = isMotionProgram(plan)
+    ? seedOperatorTransitions(
+        plan.operators.map((operator) => buildOperatorClip(operator, duration, context, mesh)),
+        holdAfterEnd
+      )
+    : linkClipTimeline((plan.actions && plan.actions.length > 0
+        ? plan.actions
+        : [{ type: "neutral" as const }]
+      ).map((action) => buildClip(action, duration)));
   const keyTimes = collectKeyTimes(clips, duration);
   const shouldLoop =
     plan.loop === true || clips.some((clip) => clip.primitive.loop === true);

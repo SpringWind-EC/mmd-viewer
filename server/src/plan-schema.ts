@@ -13,6 +13,16 @@ const joints = z.union([
 const finger = z.enum(["thumb", "index", "middle", "ring", "pinky", "all"]);
 const effector = z.enum(["head", "gaze", "torso", "hips", "right_hand", "left_hand", "right_foot", "left_foot"]);
 const facing = z.enum(["viewer", "forward", "left", "right", "up", "down"]);
+const bodyOffset = z.object({
+  right: z.number().finite().min(-1).max(1),
+  up: z.number().finite().min(-5.2).max(1),
+  forward: z.number().finite().min(-2).max(2),
+});
+const footOffset = z.object({
+  right: z.number().finite().min(-1).max(1),
+  up: z.number().finite().min(0).max(1),
+  forward: z.number().finite().min(-1.5).max(1.5),
+});
 
 const action = z.object({
   type: z.enum([
@@ -46,13 +56,58 @@ function safeReachTarget(item: {
   offset: { right: number; up: number; forward: number };
 }) {
   const side = item.effector === "right_hand" ? 1 : -1;
+  const lateralTarget = side * item.offset.right >= 0.4;
   return side * item.offset.right >= 0.08 &&
-    item.offset.forward >= (item.anchor === "head" ? 0.12 : 0.22) &&
+    item.offset.forward >= (lateralTarget ? -0.08 : item.anchor === "head" ? 0.12 : 0.22) &&
     (item.anchor !== "head" ||
       Math.hypot(item.offset.right, item.offset.up, item.offset.forward) >= 0.23);
 }
 
 const operator = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("place_body"), offset: bodyOffset, ...timing }),
+  z.object({ type: z.literal("place_foot"), side: z.enum(["right", "left"]), offset: footOffset, ...timing }),
+  z.object({
+    type: z.literal("pose_torso"),
+    pitch: z.number().finite().min(-25).max(35).optional(),
+    yaw: z.number().finite().min(-35).max(35).optional(),
+    roll: z.number().finite().min(-20).max(20).optional(),
+    ...timing,
+  }),
+  z.object({
+    type: z.literal("pose_waist"),
+    pitch: z.number().finite().min(-5).max(5).optional(),
+    yaw: z.number().finite().min(-10).max(10).optional(),
+    roll: z.number().finite().min(-4).max(4).optional(),
+    ...timing,
+  }),
+  z.object({
+    type: z.literal("pose_head"),
+    pitch: z.number().finite().min(-15).max(15).optional(),
+    yaw: z.number().finite().min(-20).max(20).optional(),
+    roll: z.number().finite().min(-12).max(12).optional(),
+    ...timing,
+  }),
+  z.object({
+    type: z.literal("bend_elbow"),
+    side: z.enum(["right", "left"]),
+    flex: z.number().finite().min(0).max(110),
+    ...timing,
+  }),
+  z.object({
+    type: z.literal("pose_arm"),
+    side: z.enum(["right", "left"]),
+    forward: z.number().finite().min(-15).max(85).optional(),
+    outward: z.number().finite().min(0).max(80).optional(),
+    flex: z.number().finite().min(0).max(110).optional(),
+    ...timing,
+  }),
+  z.object({
+    type: z.literal("pose_wrist"),
+    side: z.enum(["right", "left"]),
+    bend: z.number().finite().min(-25).max(25).optional(),
+    twist: z.number().finite().min(-40).max(40).optional(),
+    ...timing,
+  }),
   z.object({
     type: z.literal("reach"),
     effector: z.enum(["right_hand", "left_hand"]),
@@ -73,6 +128,58 @@ const operator = z.discriminatedUnion("type", [
   z.object({ type: z.literal("shift_weight"), direction: z.enum(["forward", "back", "left", "right", "down"]), intensity: intensity.optional(), ...timing }),
 ]);
 
+type Operator = z.infer<typeof operator>;
+function validateOperatorRelationships(
+  program: { duration: number; operators: Operator[] },
+  context: z.RefinementCtx
+) {
+  program.operators.forEach((item, index) => {
+    if (item.type === "pose_arm") {
+      const lift = Math.max(0, item.forward ?? 0) + (item.outward ?? 0);
+      if (lift > 85 || (lift > 60 && (item.flex ?? 0) > 75)) {
+        context.addIssue({
+          code: "custom",
+          path: ["operators", index],
+          message: "Combined arm lift must stay within 85 degrees; above 60 degrees, elbow flex is limited to 75 degrees.",
+        });
+      }
+    }
+    if (item.type !== "bend_elbow" && item.type !== "pose_arm" &&
+        item.type !== "pose_wrist" && item.type !== "pose_head") return;
+    const start = item.startTime ?? 0;
+    const end = item.endTime ?? program.duration;
+    const conflict = program.operators.some((other, otherIndex) => {
+      if (index === otherIndex) return false;
+      const otherStart = other.startTime ?? 0;
+      const otherEnd = other.endTime ?? program.duration;
+      if (Math.max(start, otherStart) >= Math.min(end, otherEnd)) return false;
+      if (item.type === "bend_elbow" || item.type === "pose_arm") {
+        return ((other.type === "reach" || other.type === "move_effector") &&
+          other.effector === `${item.side}_hand`) ||
+          ((other.type === "bend_elbow" || other.type === "pose_arm") && other.side === item.side);
+      }
+      if (item.type === "pose_wrist") {
+        return ((other.type === "orient_effector" || other.type === "oscillate") &&
+          other.effector === `${item.side}_hand`) ||
+          (other.type === "pose_wrist" && other.side === item.side);
+      }
+      return other.type === "look" ||
+        (other.type === "orient_effector" && (other.effector === "head" || other.effector === "gaze"));
+    });
+    if (conflict) {
+      context.addIssue({
+        code: "custom",
+        path: ["operators", index],
+        message: item.type === "pose_head"
+          ? "Compound head pose cannot overlap look or head orientation."
+          : item.type === "pose_wrist"
+            ? "Wrist pose cannot overlap another wrist orientation on the same side."
+            : "Arm pose cannot overlap another arm pose or hand target on the same side.",
+      });
+    }
+  });
+}
+
 const common = {
   duration: z.number().finite().min(0.5).max(5),
   holdFinalPose: z.boolean().optional(),
@@ -84,20 +191,22 @@ export const planSchema = z.union([
   z.object({ ...common, actions: z.array(action).min(1).max(100) }),
 ]).superRefine((plan, context) => {
   if (!("operators" in plan)) return;
+  validateOperatorRelationships(plan, context);
   plan.operators.forEach((item, index) => {
     if (item.type === "reach" && !safeReachTarget(item)) {
-      context.addIssue({ code: "custom", path: ["operators", index], message: "Reach target must stay in front of the same-side shoulder." });
+      context.addIssue({ code: "custom", path: ["operators", index], message: "Reach target must stay in front of or outside the same-side shoulder." });
     }
   });
 });
 
 export const generatedProgramSchema = z.object({
   ...common,
-  operators: z.array(operator).min(1).max(6),
+  operators: z.array(operator).min(1).max(12),
 }).superRefine((program, context) => {
+  validateOperatorRelationships(program, context);
   program.operators.forEach((item, index) => {
     if (item.type === "reach" && !safeReachTarget(item)) {
-      context.addIssue({ code: "custom", path: ["operators", index], message: "Reach target must stay in front of the same-side shoulder." });
+      context.addIssue({ code: "custom", path: ["operators", index], message: "Reach target must stay in front of or outside the same-side shoulder." });
     }
     const start = item.startTime ?? 0;
     const end = item.endTime ?? program.duration;
