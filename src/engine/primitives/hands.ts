@@ -126,16 +126,18 @@ function clamp(value: number, min: number, max: number) {
 function jointValue(
   action: MotionAction,
   joint: FingerJointName,
-  index: number
+  index: number,
+  allowRelease: boolean
 ) {
-  const fallback = clamp(action.curl ?? 0, 0, 1);
+  const minimum = allowRelease ? -1 : 0;
+  const fallback = clamp(action.curl ?? 0, minimum, 1);
 
   if (Array.isArray(action.joints)) {
-    return clamp(action.joints[index] ?? fallback, 0, 1);
+    return clamp(action.joints[index] ?? fallback, minimum, 1);
   }
 
   if (action.joints && typeof action.joints === "object") {
-    return clamp(action.joints[joint] ?? fallback, 0, 1);
+    return clamp(action.joints[joint] ?? fallback, minimum, 1);
   }
 
   return fallback;
@@ -229,7 +231,12 @@ function fingerJointRotation(
   twist: number
 ): QuaternionArray {
   const sign = side === "right" ? 1 : -1;
-  const curlRotation = nlerp(neutral, fingerCurlTarget(side, finger, jointIndex), curl);
+  const curlMagnitude = nlerp(neutral, fingerCurlTarget(side, finger, jointIndex), Math.abs(curl));
+  // Relative releases must exactly undo the same amount of flex. Extrapolating
+  // nlerp below zero leaves residual curl and can drive an open hand backward.
+  const curlRotation: QuaternionArray = curl < 0
+    ? [-curlMagnitude[0], -curlMagnitude[1], -curlMagnitude[2], curlMagnitude[3]]
+    : curlMagnitude;
   const spreadRotation =
     jointIndex === 0
       ? finger === "thumb"
@@ -243,7 +250,7 @@ function fingerJointRotation(
   return multiplyQuat(multiplyQuat(curlRotation, spreadRotation), twistRotation);
 }
 
-export function fingerControlPose(action: MotionAction): BoneMap {
+export function fingerControlPose(action: MotionAction, allowRelease = false): BoneMap {
   const sides: Side[] =
     action.side === "both"
       ? ["right", "left"]
@@ -251,6 +258,8 @@ export function fingerControlPose(action: MotionAction): BoneMap {
   const fingers: FingerName[] =
     action.finger === "all"
       ? ["thumb", "index", "middle", "ring", "pinky"]
+      : action.finger === "four_fingers"
+        ? ["index", "middle", "ring", "pinky"]
       : [action.finger ?? "index"];
   const spread = clamp(action.spread ?? 0, -1, 1);
   const twist = clamp(action.twist ?? 0, -1, 1);
@@ -266,7 +275,7 @@ export function fingerControlPose(action: MotionAction): BoneMap {
           side,
           finger,
           index,
-          jointValue(action, jointNames[index], index),
+          jointValue(action, jointNames[index], index, allowRelease),
           spread,
           twist
         );

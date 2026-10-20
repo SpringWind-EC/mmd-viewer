@@ -99,6 +99,19 @@ export default function ChatPanel({
         return;
       }
 
+      if (Array.isArray(parsed?.segments)) {
+        if (parsed.segments.length < 2 || parsed.segments.some((segment: unknown) =>
+          !segment || typeof segment !== "object" ||
+          !Array.isArray((segment as { operators?: unknown }).operators) ||
+          !(segment as { operators: unknown[] }).operators.length)) {
+          setError("A motion sequence needs at least two segments with operators.");
+          return;
+        }
+        onPlanGenerated(parsed);
+        setDraft((current) => ({ plan: parsed, title: "Manual sequence", revision: current.revision + 1 }));
+        return;
+      }
+
       if (!parsed.duration || typeof parsed.duration !== "number") {
         setError("Invalid motion JSON: missing duration");
         return;

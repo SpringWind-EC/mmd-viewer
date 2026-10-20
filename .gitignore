@@ -12,18 +12,27 @@ dist
 dist-ssr
 *.local
 .env
+/.env.*
+!/.env.example
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+*.sqlite-journal
+*.tsbuildinfo
 
 # Test and local QA files (not needed to run the web app)
 /test/
 /server/test/
 /coverage/
 /test-results/
+/qieqie-work/
 /playwright-report/
 /.npm-cache/
 /.chrome-pose-test*/
+
+# Local Qieqie reference sources (not loaded by the app)
+/public/Qieqie.mp4
+/public/NoCommercial.vmd
 
 # Editor directories and files
 .vscode/*

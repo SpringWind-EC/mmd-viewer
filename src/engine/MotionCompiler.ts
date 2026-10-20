@@ -1,7 +1,8 @@
 import type { MotionAction, MotionPlan } from "./MotionPlan";
-import type { SkinnedMesh } from "three";
+import { Quaternion, type SkinnedMesh } from "three";
 import { compileMotionOperator, type MotionOperatorContext } from "./MotionOperatorCompiler";
-import type { MotionOperator, MotionProgram } from "./MotionProgram";
+import type { MotionOperator, MotionProgram, MotionSequence } from "./MotionProgram";
+import { Bones } from "./RigCalibration";
 import { resolveReach } from "./RigMotionResolver";
 import {
   mergeBones,
@@ -251,29 +252,81 @@ function hasDownShift(
 
 // Return a normalized time range for an operator.
 //
-// The minimum 0.1 second span prevents zero-length clips, which are hard to
-// sample and can disappear from interpolation.
+// Wrist turns can change direction within a few video frames. Keep their
+// minimum span short while retaining a nonzero interval for interpolation.
 function operatorTime(
   operator: MotionOperator,
   duration: number
 ): { startTime: number; endTime: number } {
   const startTime = clamp(operator.startTime ?? 0, 0, duration);
   const requestedEnd = operator.endTime ?? duration;
-  const endTime = clamp(Math.max(requestedEnd, startTime + 0.1), 0, duration);
+  const minSpan = operator.type === "pose_wrist" ? 0.06 : 0.1;
+  // Decimal timeline markers such as 1.3–1.4 are exactly a tenth in authored
+  // time, even though their binary subtraction may be a hair below 0.1.
+  const endTime = clamp(requestedEnd + 1e-9 >= startTime + minSpan
+    ? requestedEnd : startTime + minSpan, 0, duration);
 
   return { startTime, endTime };
 }
 
 function assertCompatibleOperators(program: MotionProgram, duration: number) {
   program.operators.forEach((operator, index) => {
-    if (operator.type === "pose_arm") {
-      const lift = Math.max(0, operator.forward ?? 0) + (operator.outward ?? 0);
-      if (lift > 85 || (lift > 60 && (operator.flex ?? 0) > 75)) {
-        throw new Error("Combined arm lift must stay within 85 degrees; above 60 degrees, elbow flex is limited to 75 degrees.");
+    if (operator.type === "pose_forearm" && Math.abs(operator.roll) > 40 && !program.continuePrevious) {
+      throw new Error("Forearm rolls above 40 degrees require a continuing segment with a held pose.");
+    }
+    if (operator.type === "pose_wrist" && Math.abs(operator.tilt ?? 0) > 35 && !program.continuePrevious) {
+      throw new Error("Wrist tilts above 35 degrees require a continuing segment with a held pose.");
+    }
+    if (operator.type === "pose_wrist" && !program.continuePrevious &&
+        (Math.abs(operator.twist ?? 0) > 40 || Math.abs(operator.from?.twist ?? 0) > 40)) {
+      throw new Error("Wrist twists above 40 degrees require a continuing segment with a held pose.");
+    }
+    if (operator.type === "pose_palm" && Math.abs(operator.turn) > 65 && !program.continuePrevious) {
+      throw new Error("Palm turns above 65 degrees require a continuing segment with a held pose.");
+    }
+    if (operator.type === "pose_palm" && Math.abs(operator.tilt ?? 0) > 35 && !program.continuePrevious) {
+      throw new Error("Palm tilts above 35 degrees require a continuing segment with a held pose.");
+    }
+    if ((operator.type === "bend_elbow" || operator.type === "pose_arm") &&
+        (operator.flex ?? 0) < 0 && !program.continuePrevious) {
+      throw new Error("Negative elbow flex can only extend a held bend in a continuing segment.");
+    }
+    if (operator.type === "finger" && (operator.curl ?? 0) < 0 && !program.continuePrevious) {
+      throw new Error("Negative finger curl can only release a held pose in a continuing segment.");
+    }
+    if (operator.type === "place_foot") {
+      const travel = Math.hypot(operator.offset.right, operator.offset.forward);
+      const forward = Math.abs(operator.offset.forward);
+      const requiredLift = forward > 3 ? 1.2 : forward > 2 ? 0.7 : 0;
+      const unsafeInitialPlacement = !program.continuePrevious && (
+        Math.abs(operator.offset.right) > 1.5 || operator.offset.up < requiredLift
+      );
+      if (operator.extendedReach && !program.continuePrevious) {
+        throw new Error("Extended foot reach requires a continuing segment with an already lifted foot.");
+      }
+      if (travel > (operator.extendedReach && program.continuePrevious ? 6.2 : 4.1) || unsafeInitialPlacement) {
+        throw new Error("A foot placement must stay within 4.1 horizontal units, or 6.2 for an extended lifted continuation. Wider side sweeps or lowering a raised foot require a continuing segment.");
       }
     }
-    if (operator.type !== "bend_elbow" && operator.type !== "pose_arm" &&
-        operator.type !== "pose_wrist" && operator.type !== "pose_head") return;
+    if (operator.type === "pose_arm") {
+      if (!program.continuePrevious && (
+          Math.abs(operator.shoulderYaw ?? 0) > 25 || Math.abs(operator.from?.shoulderYaw ?? 0) > 25 ||
+          Math.abs(operator.upperArmRoll ?? 0) > 60 || Math.abs(operator.from?.upperArmRoll ?? 0) > 60)) {
+        throw new Error("Large shoulder yaw or upper-arm roll requires a continuing segment with a held pose.");
+      }
+      if (((operator.forward ?? 0) < -30 || (operator.outward ?? 0) < -25) && !program.continuePrevious) {
+        throw new Error("A large downward or backward arm sweep requires a continuing segment; use it to lower a held raised arm.");
+      }
+      const lift = Math.max(0, operator.forward ?? 0) + Math.max(0, operator.outward ?? 0);
+      const overhead = operator.overhead === true && (operator.shoulderShare ?? 0.12) >= 0.1;
+      if (lift > (overhead ? 130 : 85) || (lift > 60 && (operator.flex ?? 0) > 75)) {
+        throw new Error("Combined arm lift must stay within 85 degrees, or 130 with overhead and shoulderShare at least 0.1; above 60 degrees, elbow flex is limited to 75 degrees.");
+      }
+    }
+    if (operator.type !== "bend_elbow" && operator.type !== "pose_arm" && operator.type !== "pose_forearm" &&
+        operator.type !== "pose_wrist" && operator.type !== "pose_palm" && operator.type !== "pose_head" && operator.type !== "pose_neck" &&
+        operator.type !== "pose_pelvis" && operator.type !== "pose_spine" &&
+        operator.type !== "pose_ankle" && operator.type !== "pose_toe") return;
     const time = operatorTime(operator, duration);
     const conflict = program.operators.find((other, otherIndex) => {
       if (otherIndex === index) return false;
@@ -284,20 +337,46 @@ function assertCompatibleOperators(program: MotionProgram, duration: number) {
           other.effector === `${operator.side}_hand`) ||
           ((other.type === "bend_elbow" || other.type === "pose_arm") && other.side === operator.side);
       }
+      if (operator.type === "pose_forearm") {
+        return (other.type === "pose_forearm" || other.type === "pose_palm") && other.side === operator.side;
+      }
       if (operator.type === "pose_wrist") {
         return ((other.type === "orient_effector" || other.type === "oscillate") &&
           other.effector === `${operator.side}_hand`) ||
-          (other.type === "pose_wrist" && other.side === operator.side);
+          ((other.type === "pose_wrist" || other.type === "pose_palm") && other.side === operator.side);
       }
+      if (operator.type === "pose_palm") {
+        return ((other.type === "orient_effector" || other.type === "oscillate") &&
+          other.effector === `${operator.side}_hand`) ||
+          ((other.type === "pose_forearm" || other.type === "pose_wrist" || other.type === "pose_palm") &&
+            other.side === operator.side);
+      }
+      if (operator.type === "pose_pelvis") return other.type === "pose_pelvis";
+      if (operator.type === "pose_spine") return other.type === "pose_torso" ||
+        (other.type === "pose_spine" && other.segment === operator.segment);
+      if (operator.type === "pose_ankle" || operator.type === "pose_toe") {
+        return (other.type === "pose_ankle" || other.type === "pose_toe") &&
+          other.type === operator.type && other.side === operator.side;
+      }
+      if (operator.type === "pose_neck") return other.type === "pose_neck" ||
+        (other.type === "pose_head" && (other.neckShare ?? 0.3) > 0) ||
+        other.type === "look" ||
+        (other.type === "orient_effector" && (other.effector === "head" || other.effector === "gaze"));
+      if (operator.type === "pose_head" && other.type === "pose_neck") return (operator.neckShare ?? 0.3) > 0;
       return other.type === "look" ||
         (other.type === "orient_effector" && (other.effector === "head" || other.effector === "gaze"));
     });
     if (conflict) {
-      throw new Error(operator.type === "pose_head"
+      throw new Error(operator.type === "pose_head" || operator.type === "pose_neck"
         ? "pose_head cannot overlap look or head orientation; combine the angles in pose_head."
-        : operator.type === "pose_wrist"
-          ? `pose_wrist on ${operator.side} cannot overlap another wrist orientation.`
-          : `Arm pose on ${operator.side} cannot overlap another arm pose or hand target.`);
+        : operator.type === "pose_palm"
+          ? `pose_palm on ${operator.side} cannot overlap forearm, wrist, or hand orientation.`
+          : operator.type === "pose_wrist"
+            ? `pose_wrist on ${operator.side} cannot overlap pose_palm or another hand orientation.`
+          : operator.type === "pose_pelvis" || operator.type === "pose_spine" ||
+              operator.type === "pose_ankle" || operator.type === "pose_toe"
+            ? "Two operators cannot drive the same body joint at the same time."
+            : `Arm pose on ${operator.side} cannot overlap another arm pose or hand target.`);
     }
   });
 }
@@ -427,6 +506,7 @@ function operatorContext(
     : [];
 
   return {
+    continuingSegment: plan.continuePrevious === true,
     bodyHasKneeSeedForFoot: (operator) => {
       const footTime = operatorTime(operator, duration);
       return plan.operators.some((candidate) => {
@@ -561,7 +641,7 @@ function seedOperatorTransitions(clips: ActionClip[], holdAfterEnd: boolean) {
 export function compileMotionPlan(plan: MotionPlan | MotionProgram, mesh?: SkinnedMesh) {
   const duration = clamp(
     plan.duration && plan.duration > 0 ? plan.duration : DEFAULT_DURATION,
-    0.5,
+    isMotionProgram(plan) && plan.continuePrevious ? 0.25 : 0.5,
     MAX_DURATION
   );
   if (isMotionProgram(plan)) assertCompatibleOperators(plan, duration);
@@ -619,4 +699,111 @@ export function compileMotionPlan(plan: MotionPlan | MotionProgram, mesh?: Skinn
 // MotionProgram. It shares the same implementation as compileMotionPlan.
 export function compileMotionProgram(program: MotionProgram) {
   return compileMotionPlan(program);
+}
+
+// A follow-up program describes changes from the last pose, rather than a
+// replacement pose measured from the model's rest position. Keep every joint
+// that the follow-up does not mention and shift its keys onto the old timeline.
+export function appendMotionProgram(
+  previous: ReturnType<typeof compileMotionPlan> | null,
+  program: MotionProgram,
+  mesh?: SkinnedMesh
+) {
+  if (!previous) throw new Error("A continuing motion needs a previous motion plan.");
+  if (previous.loop || previous.holdFinalPose === false || previous.rotationMode !== "delta" || previous.positionMode !== "offset") {
+    throw new Error("Only a held operator motion can be continued.");
+  }
+  if (program.loop || program.holdFinalPose === false) {
+    throw new Error("A continuing segment must hold its final pose and cannot loop.");
+  }
+  const relativeControls = new Set([
+    "place_body", "place_foot", "pose_pelvis", "pose_spine", "pose_ankle", "pose_toe",
+    "pose_torso", "pose_waist", "pose_head", "pose_neck", "bend_elbow", "pose_arm", "pose_forearm", "pose_wrist", "pose_palm", "finger",
+  ]);
+  if (program.operators.some((operator) => !relativeControls.has(operator.type))) {
+    throw new Error("Continuing segments require numeric pose and placement operators; semantic targets need a new full plan.");
+  }
+  const segment = compileMotionPlan(program, mesh);
+  const base = previous.keyframes.at(-1);
+  const initial = segment.keyframes[0];
+  if (!base || !initial) throw new Error("The previous motion has no final pose.");
+  const hasAbsoluteBones = [base, ...segment.keyframes].some((frame) =>
+    Object.values(frame.rotationModes ?? {}).includes("absolute"));
+  if (hasAbsoluteBones) throw new Error("Continuing segments require relative bone rotations.");
+
+  const shifted = segment.keyframes.slice(1).map((frame) => {
+    const bones: BoneMap = {};
+    for (const name of new Set([...Object.keys(base.bones), ...Object.keys(frame.bones)])) {
+      const old = base.bones[name] ?? [0, 0, 0, 1];
+      const start = initial.bones[name] ?? [0, 0, 0, 1];
+      const current = frame.bones[name] ?? [0, 0, 0, 1];
+      const change = new Quaternion(...start).invert().multiply(new Quaternion(...current));
+      const result = new Quaternion(...old).multiply(change).normalize();
+      bones[name] = [result.x, result.y, result.z, result.w];
+    }
+    const positions: PositionMap = {};
+    for (const name of new Set([...Object.keys(base.positions ?? {}), ...Object.keys(frame.positions ?? {})])) {
+      const old = base.positions?.[name] ?? [0, 0, 0];
+      const start = initial.positions?.[name] ?? [0, 0, 0];
+      const current = frame.positions?.[name] ?? [0, 0, 0];
+      positions[name] = [
+        old[0] + current[0] - start[0],
+        old[1] + current[1] - start[1],
+        old[2] + current[2] - start[2],
+      ];
+    }
+    return {
+      time: Number((previous.duration + frame.time).toFixed(4)),
+      bones,
+      positions: Object.keys(positions).length ? positions : undefined,
+      rotationModes: { ...base.rotationModes, ...frame.rotationModes },
+    };
+  });
+  const finalPositions = shifted.at(-1)?.positions ?? base.positions ?? {};
+  for (const name of [Bones.rightFootIk, Bones.leftFootIk]) {
+    const [right, up, forward] = finalPositions[name] ?? [0, 0, 0];
+    const horizontalReach = Math.hypot(right, forward);
+    const requiredLift = Math.abs(forward) > 3 ? 1.2 : Math.abs(forward) > 2 ? 0.7 : 0;
+    const previousFoot = base.positions?.[name] ?? [0, 0, 0];
+    // A held extended foot keeps its range while the next segment poses only
+    // arms or torso; it should not require a zero-distance place_foot operator.
+    const alreadyExtended = Math.hypot(previousFoot[0], previousFoot[2]) > 4.1;
+    const extendedReach = alreadyExtended || program.operators.some((operator) => operator.type === "place_foot" &&
+      operator.extendedReach && name === (operator.side === "right" ? Bones.rightFootIk : Bones.leftFootIk));
+    const extendedLift = extendedReach && horizontalReach > 4.1 ? 0.7 : 0;
+    if (horizontalReach > (extendedReach ? 6.2 : 4.1) || up < Math.max(requiredLift, extendedLift)) {
+      throw new Error("A continuing foot reach exceeds the supported IK range or needs more lift.");
+    }
+  }
+  return {
+    ...previous,
+    duration: previous.duration + segment.duration,
+    loop: false,
+    holdFinalPose: true,
+    keyframes: [...previous.keyframes, ...shifted],
+  };
+}
+
+// Compile a complete manual sequence in one pass. Each following segment is
+// relative to the preceding final pose, exactly as when applied separately.
+export function compileMotionSequence(sequence: MotionSequence, mesh?: SkinnedMesh) {
+  if (!Array.isArray(sequence.segments) || sequence.segments.length < 2 || sequence.segments.length > 64) {
+    throw new Error("A motion sequence needs between 2 and 64 segments.");
+  }
+  let motion: ReturnType<typeof compileMotionPlan> | null = null;
+  sequence.segments.forEach((segment, index) => {
+    if (!segment || !Array.isArray(segment.operators) || segment.operators.length === 0 ||
+        !Number.isFinite(segment.duration) || segment.duration < 0.25 || segment.duration > 5) {
+      throw new Error(`Segment ${index + 1} needs operators and a duration from 0.25 to 5 seconds.`);
+    }
+    if (Boolean(segment.continuePrevious) !== (index > 0)) {
+      throw new Error(index === 0
+        ? "The first segment must start a new motion."
+        : `Segment ${index + 1} must set continuePrevious to true.`);
+    }
+    motion = index === 0
+      ? compileMotionPlan(segment, mesh)
+      : appendMotionProgram(motion, segment, mesh);
+  });
+  return motion!;
 }

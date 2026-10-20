@@ -1,7 +1,7 @@
 import type { MotionPlan } from "../engine/MotionPlan";
-import type { MotionProgram } from "../engine/MotionProgram";
+import type { MotionProgram, MotionSequence } from "../engine/MotionProgram";
 
-export type PlanData = MotionPlan | MotionProgram;
+export type PlanData = MotionPlan | MotionProgram | MotionSequence;
 export type Account = { id: string; email: string; createdAt: string };
 export type SavedPlan = {
   id: string;

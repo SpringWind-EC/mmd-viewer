@@ -54,7 +54,7 @@ export interface MotionAction {
   startTime?: number;
   endTime?: number;
   side?: "right" | "left" | "both";
-  finger?: "thumb" | "index" | "middle" | "ring" | "pinky" | "all";
+  finger?: "thumb" | "index" | "middle" | "ring" | "pinky" | "all" | "four_fingers";
   curl?: number;
   spread?: number;
   twist?: number;

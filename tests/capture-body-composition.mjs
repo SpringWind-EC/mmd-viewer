@@ -153,6 +153,22 @@ const plans = {
       { type: "pose_wrist", side: "right", bend: 15, startTime: 1.2, endTime: 2.4 },
     ],
   },
+  spine_counterbend_leg_reach: {
+    duration: 2.5, holdFinalPose: true, operators: [
+      { type: "pose_pelvis", yaw: -16, pitch: -2, startTime: 0, endTime: 1.4 },
+      { type: "pose_spine", segment: "lower", pitch: -25, yaw: -6, startTime: 0.2, endTime: 1.6 },
+      { type: "pose_spine", segment: "upper", pitch: 32, yaw: 3, startTime: 0.3, endTime: 1.7 },
+      { type: "place_foot", side: "right", offset: { right: 0.75, up: 1.3, forward: 3.4 }, startTime: 0, endTime: 1.8 },
+      { type: "pose_ankle", side: "right", pitch: 25, yaw: -8, startTime: 0.6, endTime: 1.9 },
+      { type: "pose_toe", side: "right", curl: 25, startTime: 0.8, endTime: 2 },
+      { type: "pose_ankle", side: "left", yaw: 20, startTime: 0.4, endTime: 1.7 },
+      { type: "pose_arm", side: "right", forward: 12, outward: -16, flex: 8, startTime: 0.4, endTime: 1.7 },
+      { type: "pose_arm", side: "left", forward: 10, outward: -15, flex: 8, startTime: 0.4, endTime: 1.7 },
+      { type: "pose_wrist", side: "right", bend: 5, tilt: 12, startTime: 1, endTime: 2 },
+      { type: "pose_wrist", side: "left", bend: 5, tilt: -12, startTime: 1, endTime: 2 },
+      { type: "pose_head", pitch: -8, yaw: -10, startTime: 1, endTime: 2 },
+    ],
+  },
 };
 
 try {
@@ -176,7 +192,7 @@ try {
     await waitFor("[...document.querySelectorAll('button')].some((button) => button.textContent.trim() === 'Download VMD' && !button.disabled)");
     const error = await evalPage("document.querySelector('.motion-panel-error')?.textContent ?? null");
     if (error) throw new Error(error);
-    const newControls = ["waist_head_elbows", "lateral_reach", "head_arm_transition", "elbow_pair", "arm_asymmetric", "arm_side_lift", "arm_limit_probe", "arm_reach_wrist", "arm_transition"].includes(name);
+    const newControls = ["waist_head_elbows", "lateral_reach", "head_arm_transition", "elbow_pair", "arm_asymmetric", "arm_side_lift", "arm_limit_probe", "arm_reach_wrist", "arm_transition", "spine_counterbend_leg_reach"].includes(name);
     const phases = name === "head_arm_transition" || name === "arm_transition" ? [0.45, 0.5, 0.55, 0.8, 1]
       : newControls ? [0.2, 0.5, 0.8, 1] : [0.35, 0.7, 1];
     const views = newControls
@@ -207,6 +223,18 @@ try {
         const screenshot = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false,
           clip: { x: 400, y: 45, width: 570, height: 730, scale: 1 } });
         await writeFile(resolve(output, `${name}-close-${view}.png`), Buffer.from(screenshot.data, "base64"));
+        await evalPage("document.querySelector('.motion-panel').style.visibility = ''");
+      }
+    }
+    if (name === "spine_counterbend_leg_reach") {
+      for (const [view, azimuth] of views) {
+        await evalPage(`window.__mmdQaView(${azimuth}, ${Math.PI / 2}, -8.5, 14)`);
+        await evalPage("window.__mmdQaProgress(1)");
+        await new Promise((done) => setTimeout(done, 180));
+        await evalPage("document.querySelector('.motion-panel').style.visibility = 'hidden'");
+        const screenshot = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false,
+          clip: { x: 400, y: 45, width: 570, height: 730, scale: 1 } });
+        await writeFile(resolve(output, `${name}-feet-${view}.png`), Buffer.from(screenshot.data, "base64"));
         await evalPage("document.querySelector('.motion-panel').style.visibility = ''");
       }
     }

@@ -6,7 +6,8 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { CCDIKSolver } from "three/examples/jsm/animation/CCDIKSolver.js";
 
 import { MotionPlayer } from "../engine/MotionPlayer";
-import { compileMotionPlan } from "../engine/MotionCompiler";
+import { appendMotionProgram, compileMotionPlan, compileMotionSequence } from "../engine/MotionCompiler";
+import type { MotionProgram } from "../engine/MotionProgram";
 import ChatPanel from "../components/ChatPanel";
 import { VMDExporter } from "../engine/VMDExporter";
 import type { PlanData } from "../services/api";
@@ -27,6 +28,7 @@ export default function MMDPage({ draft, setDraft }: Props) {
   const helperRef = useRef<any>(null);
   const meshRef = useRef<any>(null);
   const nativeMixerRef = useRef<THREE.AnimationMixer | null>(null);
+  const previousProgramMotionRef = useRef<ReturnType<typeof compileMotionPlan> | null>(null);
 
   const [motionData, setMotionData] = useState<any>(null);
   const [pendingPlan, setPendingPlan] = useState<PlanData | null>(draft.plan);
@@ -129,6 +131,7 @@ export default function MMDPage({ draft, setDraft }: Props) {
         __mmdQaProgress: (progress: number | null) => {
           qaProgress = progress;
         },
+        __mmdQaDuration: () => playerRef.current?.motion?.duration ?? null,
         __mmdQaFeet: () => {
           if (!mesh) return null;
           return Object.fromEntries(["右足首", "右足首D", "左足首", "左足首D"].map((name) => [
@@ -141,6 +144,13 @@ export default function MMDPage({ draft, setDraft }: Props) {
             const bone = mesh.skeleton.getBoneByName(name);
             const position = bone?.getWorldPosition(new THREE.Vector3());
             return [name, position ? [position.x, position.y, position.z] : null];
+          }));
+        },
+        __mmdQaBoneRotations: (names: string[]) => {
+          if (!mesh) return null;
+          return Object.fromEntries(names.map((name) => {
+            const bone = mesh.skeleton.getBoneByName(name);
+            return [name, bone ? bone.quaternion.toArray() : null];
           }));
         },
         __mmdQaKnees: () => {
@@ -222,6 +232,7 @@ export default function MMDPage({ draft, setDraft }: Props) {
 
         mesh = mmd.mesh;
         meshRef.current = mesh;
+        previousProgramMotionRef.current = null;
 
         mesh.castShadow = true;
         mesh.receiveShadow = true;
@@ -386,8 +397,10 @@ export default function MMDPage({ draft, setDraft }: Props) {
       if (import.meta.env.DEV) {
         delete (window as Window & { __mmdQaView?: unknown }).__mmdQaView;
         delete (window as Window & { __mmdQaProgress?: unknown }).__mmdQaProgress;
+        delete (window as Window & { __mmdQaDuration?: unknown }).__mmdQaDuration;
         delete (window as Window & { __mmdQaFeet?: unknown }).__mmdQaFeet;
         delete (window as Window & { __mmdQaBones?: unknown }).__mmdQaBones;
+        delete (window as Window & { __mmdQaBoneRotations?: unknown }).__mmdQaBoneRotations;
         delete (window as Window & { __mmdQaKnees?: unknown }).__mmdQaKnees;
       }
 
@@ -421,7 +434,13 @@ export default function MMDPage({ draft, setDraft }: Props) {
   useEffect(() => {
     if (!pendingPlan || !meshRef.current) return;
     try {
-      setMotionData(compileMotionPlan(pendingPlan, meshRef.current));
+      const next = "segments" in pendingPlan
+        ? compileMotionSequence(pendingPlan, meshRef.current)
+        : "operators" in pendingPlan && (pendingPlan as MotionProgram).continuePrevious
+          ? appendMotionProgram(previousProgramMotionRef.current, pendingPlan as MotionProgram, meshRef.current)
+          : compileMotionPlan(pendingPlan, meshRef.current);
+      previousProgramMotionRef.current = next;
+      setMotionData(next);
       setPlaybackError(null);
     } catch (error) {
       setMotionData(null);
@@ -519,6 +538,7 @@ export default function MMDPage({ draft, setDraft }: Props) {
         <ChatPanel
           onMotionGenerated={(motion) => {
             setPendingPlan(null);
+            previousProgramMotionRef.current = null;
             setMotionData(motion);
             setPlaybackError(null);
           }}
